@@ -33,6 +33,10 @@ class DetectionConfig:
     iforest_contamination: float = 0.1
     iforest_random_state: int = 42
     burn_in_periods: int = 24
+    num_features: List[str] = field(default_factory=lambda: ['amount', 'hour_of_day', 'day_of_week'])
+    cat_features: List[str] = field(default_factory=lambda: ['payment_method', 'location'])
+    rolling_rebaseline: bool = False
+    rolling_rebaseline_window: int = 168 # 1 week of hours
 
 @dataclass
 class DetectionResult:
@@ -81,9 +85,18 @@ def detect(merchant_transactions_df: pd.DataFrame, config: DetectionConfig = Non
         if len(series) < 2:
             continue
             
-        mean = series.ewm(span=config.ewma_span, adjust=False).mean()
-        std = series.ewm(span=config.ewma_span, adjust=False).std().fillna(0)
-        
+        if config.rolling_rebaseline:
+            mean = series.rolling(window=config.rolling_rebaseline_window, min_periods=config.burn_in_periods).mean()
+            std = series.rolling(window=config.rolling_rebaseline_window, min_periods=config.burn_in_periods).std().fillna(0)
+        else:
+            hist_mean = series.iloc[:config.burn_in_periods].mean()
+            hist_std = series.iloc[:config.burn_in_periods].std()
+            if pd.isna(hist_std) or hist_std == 0:
+                hist_std = 1.0
+                
+            mean = pd.Series(hist_mean, index=series.index)
+            std = pd.Series(hist_std, index=series.index)
+            
         upper_limit = mean + config.ewma_control_limit_std * std
         lower_limit = mean - config.ewma_control_limit_std * std
         
@@ -104,6 +117,8 @@ def detect(merchant_transactions_df: pd.DataFrame, config: DetectionConfig = Non
         for i in range(config.burn_in_periods, len(series)):
             ts = agg_df.index[i]
             val = series.iloc[i]
+            if pd.isna(upper_limit.iloc[i]):
+                continue
             
             if ewma_upper_breach.iloc[i]:
                 margin = val - upper_limit.iloc[i]
@@ -130,10 +145,12 @@ def detect(merchant_transactions_df: pd.DataFrame, config: DetectionConfig = Non
     flagged_transactions = []
     
     if flagged_timestamps and len(df) > 20:
-        df['hour_of_day'] = df['timestamp'].dt.hour
-        df['day_of_week'] = df['timestamp'].dt.dayofweek
-        
-        features = ['amount', 'payment_method', 'location', 'hour_of_day', 'day_of_week']
+        if 'hour_of_day' in config.num_features and 'hour_of_day' not in df.columns:
+            df['hour_of_day'] = df['timestamp'].dt.hour
+        if 'day_of_week' in config.num_features and 'day_of_week' not in df.columns:
+            df['day_of_week'] = df['timestamp'].dt.dayofweek
+            
+        features = config.num_features + config.cat_features
         
         unflagged_mask = np.ones(len(df), dtype=bool)
         for ts in flagged_timestamps:
@@ -144,11 +161,13 @@ def detect(merchant_transactions_df: pd.DataFrame, config: DetectionConfig = Non
         baseline_df = df[unflagged_mask]
         
         if len(baseline_df) > 10:
-            preprocessor = ColumnTransformer(
-                transformers=[
-                    ('num', StandardScaler(), ['amount', 'hour_of_day', 'day_of_week']),
-                    ('cat', OneHotEncoder(handle_unknown='ignore'), ['payment_method', 'location'])
-                ])
+            transformers = []
+            if config.num_features:
+                transformers.append(('num', StandardScaler(), config.num_features))
+            if config.cat_features:
+                transformers.append(('cat', OneHotEncoder(handle_unknown='ignore'), config.cat_features))
+                
+            preprocessor = ColumnTransformer(transformers=transformers)
                 
             pipeline = Pipeline([
                 ('preprocessor', preprocessor),

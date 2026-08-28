@@ -80,11 +80,62 @@ def run_pipeline():
                 y_true, y_scores, thresholds, amounts, fn_multiplier=1.15, fp_multiplier=0.02
             )
             
+            # --- Naive Baseline ---
+            from backend.baseline import detect_naive
+            naive_scores = detect_naive(df)
+            naive_thresholds = np.linspace(df['amount'].min(), df['amount'].max(), 50).tolist()
+            
+            optimal_naive = find_optimal_threshold(
+                y_true=y_true, y_scores=naive_scores, thresholds=naive_thresholds,
+                amounts=amounts, fn_multiplier=1.15, fp_multiplier=0.02
+            )
+            
+            # --- Tiered Action Policy ---
+            from backend.cost_model import find_optimal_threshold_pair
+            optimal_tiered = find_optimal_threshold_pair(
+                y_true=y_true, y_scores=y_scores, thresholds=thresholds,
+                amounts=amounts, fn_multiplier=1.15, fp_multiplier=0.02, cost_per_review=50.0
+            )
+            
+            # --- Per-Segment ---
+            merchant_vols = df.groupby('merchant_id').size()
+            q33, q67 = merchant_vols.quantile([0.33, 0.67])
+            def get_tier(vol):
+                if vol <= q33: return "Low Volume"
+                if vol <= q67: return "Medium Volume"
+                return "High Volume"
+            
+            df['merchant_tier'] = df['merchant_id'].map(merchant_vols.apply(get_tier))
+            
+            segments_data = {}
+            for tier in ["Low Volume", "Medium Volume", "High Volume"]:
+                t_df = df[df['merchant_tier'] == tier]
+                ty_true = t_df['is_anomaly'].astype(int).tolist()
+                ty_scores = t_df['model_score'].tolist()
+                tamounts = t_df['amount'].tolist()
+                
+                tif_scores = t_df[t_df['model_score'] > -10.0]['model_score']
+                if not tif_scores.empty:
+                    t_thresh = np.linspace(float(tif_scores.min()) - 0.1, float(tif_scores.max()) + 0.1, 50).tolist()
+                    t_curve = evaluate_threshold_costs(ty_true, ty_scores, t_thresh, tamounts, 1.15, 0.02)
+                    t_opt = find_optimal_threshold(ty_true, ty_scores, t_thresh, tamounts, 1.15, 0.02)
+                    t_opt_tiered = find_optimal_threshold_pair(ty_true, ty_scores, t_thresh, tamounts, 1.15, 0.02, 50.0)
+                    segments_data[tier] = {
+                        "curve": t_curve,
+                        "optimal": t_opt,
+                        "tiered_optimal": t_opt_tiered
+                    }
+                else:
+                    segments_data[tier] = None
+                    
             state.cost_data = {
                 "curve": curve,
                 "optimal": optimal,
                 "bootstrap": boot,
-                "baseline_cost": sum(amount * 1.15 for amount, is_anom in zip(amounts, y_true) if is_anom == 1)
+                "baseline_cost": sum(amount * 1.15 for amount, is_anom in zip(amounts, y_true) if is_anom == 1),
+                "naive_optimal": optimal_naive,
+                "tiered_optimal": optimal_tiered,
+                "segments": segments_data
             }
         else:
             state.cost_data = {}

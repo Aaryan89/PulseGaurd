@@ -17,20 +17,20 @@ class MerchantSimulator:
         # We parameterize behavior based on merchant tier
         if tier == 'small':
             self.base_lambda = 5  # average txns per hour
-            self.mu_log = 3.0     # log mean of amount (~$20)
-            self.sigma_log = 0.5  # variance of amount
+            self.mu_log = 6.2     # log mean of amount (~₹490)
+            self.sigma_log = 0.8  # variance of amount
             self.payment_mix = {'credit_card': 0.4, 'debit_card': 0.3, 'upi': 0.3}
             self.geo_mix = {'domestic': 0.95, 'international': 0.05}
         elif tier == 'medium':
             self.base_lambda = 40
-            self.mu_log = 4.0     # log mean (~$54)
-            self.sigma_log = 0.8
+            self.mu_log = 7.3     # log mean (~₹1480)
+            self.sigma_log = 1.0
             self.payment_mix = {'credit_card': 0.6, 'debit_card': 0.2, 'upi': 0.2}
             self.geo_mix = {'domestic': 0.85, 'international': 0.15}
         else: # large
             self.base_lambda = 200
-            self.mu_log = 4.5     # log mean (~$90)
-            self.sigma_log = 1.0
+            self.mu_log = 8.0     # log mean (~₹2980)
+            self.sigma_log = 1.2
             self.payment_mix = {'credit_card': 0.7, 'debit_card': 0.1, 'upi': 0.1, 'netbanking': 0.1}
             self.geo_mix = {'domestic': 0.70, 'international': 0.30}
 
@@ -38,8 +38,15 @@ class MerchantSimulator:
         n_txns = np.random.poisson(self.base_lambda)
         return self._generate_transactions(n_txns, timestamp, is_anomaly=False, anomaly_type='none')
 
-    def generate_anomaly_hour(self, timestamp: datetime, anomaly_type: str) -> List[Dict[str, Any]]:
-        if anomaly_type == 'volume_spike':
+    def generate_anomaly_hour(self, timestamp: datetime, anomaly_type: str, progress: float = 0.0) -> List[Dict[str, Any]]:
+        if anomaly_type == 'legitimate_growth':
+            # Gradual ramp up: progress is from 0.0 to 1.0
+            # By the end, volume is 4x higher
+            current_lambda = self.base_lambda * (1 + 3 * progress)
+            n_txns = np.random.poisson(current_lambda)
+            return self._generate_transactions(n_txns, timestamp, is_anomaly=False, anomaly_type='none')
+            
+        elif anomaly_type == 'volume_spike':
             # Sudden burst in volume, maintaining normal characteristics
             n_txns = np.random.poisson(self.base_lambda * 6)
             return self._generate_transactions(n_txns, timestamp, is_anomaly=True, anomaly_type='volume_spike')
@@ -56,7 +63,7 @@ class MerchantSimulator:
                     'transaction_id': f"tx_{random.randint(10000000, 99999999)}",
                     'merchant_id': self.merchant_id,
                     'timestamp': timestamp + timedelta(minutes=random.uniform(0, 59), seconds=random.uniform(0, 59)),
-                    'amount': round(random.uniform(1.0, 2.5), 2), # Card testing amounts are usually $1-$2
+                    'amount': round(random.uniform(50.0, 150.0), 2), # Card testing amounts in INR (₹50 - ₹150)
                     'payment_method': 'credit_card',
                     'location': 'international', # Often cross-border
                     'is_anomaly': True,

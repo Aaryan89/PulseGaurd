@@ -143,6 +143,118 @@ def find_optimal_threshold(
     )
     return min(results, key=lambda x: x["total_cost"])
 
+def evaluate_threshold_pairs(
+    y_true: list[int],
+    y_scores: list[float],
+    thresholds: list[float],
+    amounts: list[float],
+    fn_multiplier: float = 1.15,
+    fp_multiplier: float = 0.02,
+    cost_per_review: float = 5.0
+) -> list[dict]:
+    """
+    Evaluate the cost model across different pairs of (lower, upper) thresholds
+    for a 3-tier action policy: Allow, Review, Block.
+    
+    Args:
+        y_true: Ground truth binary labels.
+        y_scores: Continuous anomaly scores or probabilities.
+        thresholds: List of thresholds to evaluate as both lower and upper bounds.
+        amounts: List of transaction amounts.
+        fn_multiplier: Multiplier for false negatives.
+        fp_multiplier: Multiplier for false positives.
+        cost_per_review: Flat cost for manual review of a transaction.
+        
+    Returns:
+        List of dictionaries containing the lower/upper thresholds and resulting cost.
+    """
+    y_true_arr = np.array(y_true)
+    y_scores_arr = np.array(y_scores)
+    amounts_arr = np.array(amounts)
+    
+    is_positive = (y_true_arr == 1)
+    is_negative = (y_true_arr == 0)
+    
+    results = []
+    
+    # 2D Grid Sweep
+    for i in range(len(thresholds)):
+        for j in range(i, len(thresholds)):
+            lower = thresholds[i]
+            upper = thresholds[j]
+            
+            allowed = y_scores_arr < lower
+            reviewed = (y_scores_arr >= lower) & (y_scores_arr < upper)
+            blocked = y_scores_arr >= upper
+            
+            # Costs
+            # 1. Allowed but fraudulent (False Negatives)
+            fn_mask = allowed & is_positive
+            fn_cost = (amounts_arr[fn_mask] * fn_multiplier).sum()
+            
+            # 2. Blocked but legitimate (False Positives)
+            fp_mask = blocked & is_negative
+            fp_cost = (amounts_arr[fp_mask] * fp_multiplier).sum()
+            
+            # 3. Reviewed (Flat Cost for Analyst Time)
+            review_cost = reviewed.sum() * cost_per_review
+            
+            total_cost = fn_cost + fp_cost + review_cost
+            
+            # Optional: collect counts for display
+            allowed_fraud = fn_mask.sum()
+            allowed_legit = (allowed & is_negative).sum()
+            blocked_fraud = (blocked & is_positive).sum()
+            blocked_legit = fp_mask.sum()
+            reviewed_fraud = (reviewed & is_positive).sum()
+            reviewed_legit = (reviewed & is_negative).sum()
+            
+            results.append({
+                "lower_threshold": float(lower),
+                "upper_threshold": float(upper),
+                "total_cost": float(total_cost),
+                "fn_cost": float(fn_cost),
+                "fp_cost": float(fp_cost),
+                "review_cost": float(review_cost),
+                "allowed_fraud": int(allowed_fraud),
+                "allowed_legit": int(allowed_legit),
+                "reviewed_fraud": int(reviewed_fraud),
+                "reviewed_legit": int(reviewed_legit),
+                "blocked_fraud": int(blocked_fraud),
+                "blocked_legit": int(blocked_legit)
+            })
+            
+    return results
+
+def find_optimal_threshold_pair(
+    y_true: list[int],
+    y_scores: list[float],
+    thresholds: list[float],
+    amounts: list[float],
+    fn_multiplier: float = 1.15,
+    fp_multiplier: float = 0.02,
+    cost_per_review: float = 5.0
+) -> dict:
+    """
+    Finds the (lower, upper) threshold pair that yields the minimum total cost.
+    
+    Args:
+        y_true: Ground truth binary labels.
+        y_scores: Continuous anomaly scores or probabilities.
+        thresholds: List of thresholds to sweep.
+        amounts: List of transaction amounts.
+        fn_multiplier: Multiplier for false negatives.
+        fp_multiplier: Multiplier for false positives.
+        cost_per_review: Flat cost for manual review.
+        
+    Returns:
+        Dictionary representing the best operating point (minimum cost).
+    """
+    results = evaluate_threshold_pairs(
+        y_true, y_scores, thresholds, amounts, fn_multiplier, fp_multiplier, cost_per_review
+    )
+    return min(results, key=lambda x: x["total_cost"])
+
 def bootstrap_cost_estimate(
     y_true: list[int],
     y_scores: list[float],

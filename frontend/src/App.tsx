@@ -110,7 +110,7 @@ const MerchantDetail = () => {
               <YAxis yAxisId="right" orientation="right" />
               <Tooltip labelFormatter={(val) => new Date(val).toLocaleString()} />
               <Line yAxisId="left" type="monotone" dataKey="volume" stroke="#3b82f6" dot={false} name="Volume (txns/hr)" />
-              <Line yAxisId="right" type="monotone" dataKey="ticket_size" stroke="#10b981" dot={false} name="Avg Ticket Size ($)" />
+              <Line yAxisId="right" type="monotone" dataKey="ticket_size" stroke="#10b981" dot={false} name="Avg Ticket Size (₹)" />
               {timeline.flagged_windows.map((fw: any, idx: number) => (
                 <ReferenceArea 
                   key={idx} 
