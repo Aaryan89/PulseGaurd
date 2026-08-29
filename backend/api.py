@@ -140,6 +140,30 @@ def run_pipeline():
         else:
             state.cost_data = {}
             
+        # Trigger Auto-Responder Webhooks
+        from backend.webhook_log import webhook_manager
+        if state.cost_data and "tiered_optimal" in state.cost_data:
+            lower_thresh = state.cost_data["tiered_optimal"]["lower_threshold"]
+            upper_thresh = state.cost_data["tiered_optimal"]["upper_threshold"]
+            
+            for m_id, res in merchant_results.items():
+                for txn in res.flagged_transactions:
+                    score = txn['score']
+                    if score >= upper_thresh:
+                        tier = "block"
+                    elif score >= lower_thresh:
+                        tier = "review"
+                    else:
+                        continue
+                        
+                    webhook_manager.fire_webhook({
+                        "transaction_id": txn['transaction_id'],
+                        "merchant_id": m_id,
+                        "tier": tier,
+                        "anomaly_score": round(score, 3),
+                        "reason": txn.get('reason', 'Anomaly detected')
+                    })
+            
         state.df = df
         state.merchant_results = merchant_results
         state.last_updated = datetime.now()
@@ -234,6 +258,11 @@ async def get_merchant_flags(merchant_id: str):
         "audit_log": res.audit_log,
         "flagged_transactions": res.flagged_transactions
     }
+
+@app.get("/webhooks/recent")
+async def get_recent_webhooks():
+    from backend.webhook_log import webhook_manager
+    return webhook_manager.get_recent_notifications()
 
 @app.get("/cost-curve")
 async def get_cost_curve():

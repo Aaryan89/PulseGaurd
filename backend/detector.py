@@ -181,11 +181,51 @@ def detect(merchant_transactions_df: pd.DataFrame, config: DetectionConfig = Non
                 flagged_df = df[flagged_mask].copy()
                 scores = -pipeline.decision_function(flagged_df[features])
                 
+                # Pragmatic fallback for explainability: computing z-scores against merchant baseline
+                # Using SHAP with IsolationForest inside a ColumnTransformer pipeline can be fiddly
+                # (mapping one-hot encoded features back to originals) and potentially slow.
+                # Here we use standard deviations from the historical (unflagged) mean.
+                
+                # Calculate baselines for numerical features
+                baselines = {}
+                for num_feat in config.num_features:
+                    mean_val = baseline_df[num_feat].mean()
+                    std_val = baseline_df[num_feat].std()
+                    if pd.isna(std_val) or std_val == 0:
+                        std_val = 1e-5
+                    baselines[num_feat] = {'mean': mean_val, 'std': std_val}
+
+                # Calculate baselines for categorical features
+                cat_baselines = {}
+                for cat_feat in config.cat_features:
+                    cat_baselines[cat_feat] = baseline_df[cat_feat].value_counts(normalize=True)
+
                 for idx, (_, txn) in enumerate(flagged_df.iterrows()):
+                    score = float(scores[idx])
+                    
+                    # Generate explanation drivers
+                    drivers = []
+                    for num_feat in config.num_features:
+                        b = baselines[num_feat]
+                        dev = (txn[num_feat] - b['mean']) / b['std']
+                        if abs(dev) > 2.0:
+                            drivers.append(f"{num_feat} ({dev:+.1f}σ from baseline)")
+                    
+                    # Add categorical drivers if they were rare in baseline
+                    for cat_feat in config.cat_features:
+                        cat_val = txn[cat_feat]
+                        freq = cat_baselines[cat_feat].get(cat_val, 0)
+                        if freq < 0.05:
+                            drivers.append(f"unfamiliar {cat_feat} ('{cat_val}')")
+                            
+                    driver_str = ", ".join(drivers) if drivers else "complex multi-feature anomaly"
+                    reason = f"Isolation forest anomaly score {score:.2f}. Primary drivers: {driver_str}."
+                    
                     flagged_transactions.append({
                         'transaction_id': txn['transaction_id'],
-                        'score': float(scores[idx]),
-                        'window': txn['timestamp'].floor(config.window_freq)
+                        'score': score,
+                        'window': txn['timestamp'].floor(config.window_freq),
+                        'reason': reason
                     })
                     
     return DetectionResult(
