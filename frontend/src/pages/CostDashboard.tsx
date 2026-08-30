@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Label, BarChart, Bar, Legend } from 'recharts';
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Label, BarChart, Bar, Legend } from 'recharts';
 import { formatCurrency } from '../utils/currency';
 
 export const CostDashboard = () => {
@@ -52,200 +52,208 @@ export const CostDashboard = () => {
   };
 
   return (
-    <div className="max-w-6xl p-8 mx-auto space-y-8">
-      <div className="flex items-end justify-between">
+    <div className="max-w-6xl p-8 mx-auto space-y-6 text-pg-text">
+      <div className="flex items-end justify-between pb-4 border-b border-pg-border">
         <div>
-          <h1 className="mb-2 text-3xl font-bold">Financial Impact & Cost Curve</h1>
-          <p className="text-gray-600">Optimizing for the lowest expected loss (false negatives + false positives)</p>
+          <h1 className="mb-1 font-mono text-2xl font-bold tracking-tight">FINANCIAL_IMPACT_AND_COST_CURVE</h1>
+          <p className="text-sm text-pg-muted">Optimizing for the lowest expected loss (false negatives + false positives)</p>
         </div>
         <div className="flex items-center space-x-6">
-          <div className="flex items-center p-1 space-x-2 bg-gray-100 rounded">
+          <div className="flex items-center p-1 space-x-1 border border-pg-border bg-pg-surface">
             <button 
-              className={`px-3 py-1 rounded ${currency === 'INR' ? 'bg-white shadow font-bold' : 'text-gray-500'}`}
+              className={`px-3 py-1 text-xs font-mono font-bold transition-colors ${currency === 'INR' ? 'bg-[#2D3748] text-white' : 'text-pg-muted hover:text-pg-text'}`}
               onClick={() => setCurrency('INR')}
             >
-              ₹ INR
+              INR
             </button>
             <button 
-              className={`px-3 py-1 rounded ${currency === 'USD' ? 'bg-white shadow font-bold' : 'text-gray-500'}`}
+              className={`px-3 py-1 text-xs font-mono font-bold transition-colors ${currency === 'USD' ? 'bg-[#2D3748] text-white' : 'text-pg-muted hover:text-pg-text'}`}
               onClick={() => setCurrency('USD')}
             >
-              $ USD
+              USD
             </button>
           </div>
           
-          <div className="flex items-center space-x-2">
-            <label className="font-medium text-gray-700">Merchant Tier:</label>
+          <div className="flex items-center space-x-3">
+            <label className="font-mono text-xs text-pg-muted">MERCHANT_TIER:</label>
             <select 
               value={selectedSegment} 
               onChange={e => setSelectedSegment(e.target.value)}
-              className="p-2 bg-white border-gray-300 rounded shadow-sm"
+              className="px-3 py-1 font-mono text-sm border bg-pg-surface border-pg-border text-pg-text focus:outline-none focus:border-pg-cyan"
             >
-              <option value="Blended">Blended (All Merchants)</option>
-              <option value="Low Volume">Low Volume</option>
-              <option value="Medium Volume">Medium Volume</option>
-              <option value="High Volume">High Volume</option>
+              <option value="Blended">BLENDED_ALL</option>
+              <option value="Low Volume">LOW_VOLUME</option>
+              <option value="Medium Volume">MEDIUM_VOLUME</option>
+              <option value="High Volume">HIGH_VOLUME</option>
             </select>
           </div>
         </div>
       </div>
       
-      <div className="bg-white p-6 border border-gray-200 rounded-lg shadow mb-8">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold">Interactive Cost Assumptions</h2>
-          <button 
-            onClick={() => { setFnMultiplier(1.15); setFpMultiplier(0.02); }}
-            className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 px-3 rounded font-medium"
-          >
-            Reset to Defaults
-          </button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div>
-            <label className="flex justify-between text-sm font-medium text-gray-700 mb-2">
-              <span>Chargeback Fee Rate (False Negative Cost)</span>
-              <span className="font-bold text-red-600">{(fnMultiplier).toFixed(2)}x</span>
-            </label>
-            <input 
-              type="range" 
-              min="1.0" max="3.0" step="0.05"
-              value={fnMultiplier}
-              onChange={(e) => setFnMultiplier(parseFloat(e.target.value))}
-              className="w-full accent-blue-600"
-            />
-            <p className="text-xs text-gray-500 mt-1">Multiplier on the transaction amount lost to missed fraud (1.0 = item value, + fees).</p>
-          </div>
-          <div>
-            <label className="flex justify-between text-sm font-medium text-gray-700 mb-2">
-              <span>Churn-Risk Rate (False Positive Cost)</span>
-              <span className="font-bold text-blue-600">{(fpMultiplier).toFixed(3)}x</span>
-            </label>
-            <input 
-              type="range" 
-              min="0.0" max="0.1" step="0.005"
-              value={fpMultiplier}
-              onChange={(e) => setFpMultiplier(parseFloat(e.target.value))}
-              className="w-full accent-blue-600"
-            />
-            <p className="text-xs text-gray-500 mt-1">Multiplier representing lost lifetime value from blocking a good customer.</p>
-          </div>
-        </div>
-      </div>
-      
       {!displayOptimal ? (
-        <div className="p-8 text-yellow-800 rounded bg-yellow-50">No anomalous transactions were flagged in this tier. Cost is entirely missed fraud.</div>
+        <div className="p-6 font-mono text-sm border text-pg-amber border-pg-amber/30 bg-pg-amber/10">
+          [NO_ANOMALOUS_TRANSACTIONS_FLAGGED_IN_TIER]
+        </div>
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-6">
-            <div className="p-6 bg-white border border-gray-200 rounded-lg shadow">
-              <div className="text-sm font-medium text-gray-500">Expected Operating Cost ({selectedSegment})</div>
-              <div className="mt-2 text-3xl font-bold">{formatAmount(displayOptimal.total_cost)}</div>
-              {selectedSegment === 'Blended' && data.bootstrap && (
-                <div className="mt-2 text-sm font-medium text-green-600">
-                  90% CI: [{formatAmount(data.bootstrap.ci_lower_90)}, {formatAmount(data.bootstrap.ci_upper_90)}]
-                </div>
-              )}
+          {/* Top Metrics Row */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+            <div className="flex flex-col justify-between p-5 border bg-pg-surface border-pg-border">
+              <div className="mb-2 font-mono text-xs text-pg-muted">EXPECTED_OPERATING_COST</div>
+              <div>
+                <div className="font-mono text-2xl font-bold text-pg-cyan">{formatAmount(displayOptimal.total_cost)}</div>
+                {selectedSegment === 'Blended' && data.bootstrap && (
+                  <div className="text-[10px] font-mono text-pg-muted mt-1">
+                    90% CI: [{formatAmount(data.bootstrap.ci_lower_90)}, {formatAmount(data.bootstrap.ci_upper_90)}]
+                  </div>
+                )}
+              </div>
             </div>
             
             {selectedSegment === 'Blended' ? (
-              <div className="p-6 bg-white border border-gray-200 rounded-lg shadow">
-                <div className="text-sm font-medium text-gray-500">Baseline (Doing Nothing)</div>
-                <div className="mt-2 text-3xl font-bold text-red-600">{formatAmount(baseline_cost)}</div>
-                <div className="mt-2 text-sm text-gray-500">100% missed fraud chargebacks</div>
+              <div className="flex flex-col justify-between p-5 border bg-pg-surface border-pg-border">
+                <div className="mb-2 font-mono text-xs text-pg-muted">BASELINE_NO_DETECTOR</div>
+                <div>
+                  <div className="font-mono text-2xl font-bold text-pg-crimson">{formatAmount(baseline_cost)}</div>
+                  <div className="text-[10px] font-mono text-pg-muted mt-1">100% MISSED FRAUD (CHARGEBACKS)</div>
+                </div>
               </div>
             ) : (
-              <div className="p-6 bg-white border border-gray-200 rounded-lg shadow">
-                <div className="text-sm font-medium text-gray-500">Model Metrics</div>
-                <div className="grid grid-cols-2 mt-2 text-sm gap-y-2">
-                  <div><span className="text-gray-500">Precision:</span> <span className="ml-1 font-medium">{displayOptimal.precision.toFixed(3)}</span></div>
-                  <div><span className="text-gray-500">Recall:</span> <span className="ml-1 font-medium">{displayOptimal.recall.toFixed(3)}</span></div>
+              <div className="flex flex-col justify-between p-5 border bg-pg-surface border-pg-border">
+                <div className="mb-2 font-mono text-xs text-pg-muted">MODEL_METRICS</div>
+                <div className="grid grid-cols-2 font-mono text-sm">
+                  <div><span className="text-pg-muted">PREC:</span> <span className="text-pg-text">{displayOptimal.precision.toFixed(3)}</span></div>
+                  <div><span className="text-pg-muted">REC:</span> <span className="text-pg-text">{displayOptimal.recall.toFixed(3)}</span></div>
                 </div>
               </div>
             )}
             
-            <div className="p-6 bg-white border border-purple-200 rounded-lg shadow">
-              <div className="text-sm font-bold text-purple-600">System Performance (Latency)</div>
-              <div className="mt-2 text-sm text-gray-700">
-                <div className="flex items-center justify-between mb-1">
-                  <span>Single Txn (p95)</span>
-                  <span className="px-1 font-mono text-purple-800 bg-gray-100 rounded">996ms</span>
+            <div className="flex flex-col justify-between p-5 border bg-pg-surface border-pg-border">
+              <div className="mb-2 font-mono text-xs text-pg-muted">LATENCY_P95</div>
+              <div className="space-y-1 font-mono text-sm">
+                <div className="flex items-center justify-between pb-1 border-b border-pg-border/50">
+                  <span className="text-pg-muted">SINGLE_TXN</span>
+                  <span className="text-pg-cyan">996ms</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>Batch Window (p95)</span>
-                  <span className="px-1 font-mono text-purple-800 bg-gray-100 rounded">658ms</span>
+                  <span className="text-pg-muted">BATCH_WINDOW</span>
+                  <span className="text-pg-cyan">658ms</span>
                 </div>
               </div>
-              <div className="mt-2 text-xs text-gray-500">End-to-end (Stage 1 + Stage 2 IF scoring)</div>
             </div>
             
-            {displayTiered && (
-              <div className="p-6 bg-white border border-blue-200 rounded-lg shadow">
-                <div className="text-sm font-bold text-blue-600">Tiered Action Policy (Allow/Review/Block)</div>
-                <div className="mt-1 text-2xl font-bold text-blue-900">{formatAmount(displayTiered.total_cost)}</div>
-                <div className="mt-1 text-xs text-gray-600">
-                  Savings vs Binary: {formatAmount(displayOptimal.total_cost - displayTiered.total_cost)}
-                </div>
-                <div className="mt-1 text-xs text-gray-500">
-                  Low: {displayTiered.lower_threshold.toFixed(2)} | Upp: {displayTiered.upper_threshold.toFixed(2)}
+            {displayTiered ? (
+              <div className="relative flex flex-col justify-between p-5 overflow-hidden border bg-pg-surface border-pg-amber/50">
+                <div className="absolute top-0 right-0 w-16 h-16 transform rotate-45 translate-x-8 -translate-y-8 bg-pg-amber/10"></div>
+                <div className="relative z-10 mb-2 font-mono text-xs text-pg-amber">TIERED_POLICY_COST (A/R/B)</div>
+                <div className="relative z-10">
+                  <div className="font-mono text-xl font-bold text-pg-text">{formatAmount(displayTiered.total_cost)}</div>
+                  <div className="text-[10px] font-mono text-pg-muted mt-1">
+                    SAVINGS VS BINARY: <span className="text-pg-amber">{formatAmount(displayOptimal.total_cost - displayTiered.total_cost)}</span>
+                  </div>
                 </div>
               </div>
+            ) : (
+              <div className="p-5 border bg-pg-surface border-pg-border"></div>
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-            <div className="p-6 bg-white border border-gray-200 rounded-lg shadow">
-              <h2 className="mb-4 text-xl font-bold">Cost Curve ({selectedSegment})</h2>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={displayCurve} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis 
-                      dataKey="threshold" 
-                      type="number" 
-                      domain={['dataMin', 'dataMax']} 
-                      tickFormatter={(val) => val.toFixed(2)}
-                    >
-                      <Label value="Anomaly Score Threshold" offset={-10} position="insideBottom" />
-                    </XAxis>
-                    <YAxis 
-                      tickFormatter={(val) => (currency === 'INR' ? '₹' : '$') + formatCompactAmount(val)} 
-                      width={80}
-                    />
-                    <Tooltip 
-                      formatter={(value: number) => [formatAmount(value), 'Total Cost']}
-                      labelFormatter={(label: number) => `Threshold: ${label.toFixed(3)}`}
-                    />
-                    <Line type="monotone" dataKey="total_cost" stroke="#3b82f6" strokeWidth={3} dot={false} />
-                    <ReferenceLine x={displayOptimal.threshold} stroke="#ef4444" strokeDasharray="5 5" label={{ value: 'Optimal', position: 'top', fill: '#ef4444' }} />
-                  </LineChart>
-                </ResponsiveContainer>
+          {/* Signature Element: The Interactive Cost Curve */}
+          <div className="overflow-hidden border bg-pg-bg border-pg-border">
+            <div className="bg-[#121820] border-b border-pg-border p-4 flex justify-between items-center">
+              <h2 className="font-mono text-sm tracking-widest text-pg-muted">COST_OPTIMIZATION_CURVE</h2>
+              <div className="text-xs font-mono text-pg-cyan border border-pg-cyan/30 bg-pg-cyan/10 px-2 py-0.5">
+                OPTIMAL_THRESHOLD: {displayOptimal.threshold.toFixed(2)}
               </div>
             </div>
-
-            {selectedSegment === 'Blended' && naive_optimal && (
-              <div className="p-6 bg-white border border-gray-200 rounded-lg shadow">
-                <h2 className="mb-4 text-xl font-bold">Naive Baseline vs. Our Detector</h2>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={comparisonData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="name" />
-                      <YAxis 
-                        tickFormatter={(val) => (currency === 'INR' ? '₹' : '$') + formatCompactAmount(val)} 
-                        width={80}
-                      />
-                      <Tooltip formatter={(value: number) => formatAmount(value)} />
-                      <Legend />
-                      <Bar dataKey="Naive Baseline" fill="#9ca3af" name="Naive Baseline (Optimal)" />
-                      <Bar dataKey="Our Detector" fill="#10b981" name="Our Detector" />
-                    </BarChart>
-                  </ResponsiveContainer>
+            
+            {/* The Chart */}
+            <div className="p-6 h-96">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={displayCurve} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorCost" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#38BDF8" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#38BDF8" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2D3748" vertical={false} />
+                  <XAxis 
+                    dataKey="threshold" 
+                    type="number" 
+                    domain={['dataMin', 'dataMax']} 
+                    tick={{fill: '#94A3B8', fontSize: 12, fontFamily: 'JetBrains Mono'}}
+                    stroke="#94A3B8"
+                    tickFormatter={(val) => val.toFixed(2)}
+                  >
+                  </XAxis>
+                  <YAxis 
+                    tickFormatter={(val) => (currency === 'INR' ? '₹' : '$') + formatCompactAmount(val)} 
+                    width={80}
+                    tick={{fill: '#94A3B8', fontSize: 12, fontFamily: 'JetBrains Mono'}}
+                    stroke="#94A3B8"
+                  />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#1A2027', borderColor: '#2D3748', color: '#E2E8F0', fontFamily: 'JetBrains Mono', fontSize: '12px' }}
+                    formatter={(value: number) => [formatAmount(value), 'TOTAL_COST']}
+                    labelFormatter={(label: number) => `THRESHOLD: ${label.toFixed(3)}`}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="total_cost" 
+                    stroke="#38BDF8" 
+                    fill="url(#colorCost)"
+                    strokeWidth={2} 
+                    dot={false}
+                    isAnimationActive={false} 
+                  />
+                  <ReferenceLine 
+                    x={displayOptimal.threshold} 
+                    stroke="#38BDF8" 
+                    strokeDasharray="4 4" 
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            
+            {/* The Integrated Control Rail */}
+            <div className="border-t border-pg-border bg-[#121820] p-4 flex flex-col md:flex-row gap-8">
+              <div className="flex flex-col justify-center flex-1">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-mono text-xs text-pg-muted">CHARGEBACK_FEE_RATE (FN_COST)</span>
+                  <span className="font-mono text-sm font-bold text-pg-crimson">{fnMultiplier.toFixed(2)}X</span>
                 </div>
-                <div className="mt-4 text-lg font-bold text-center text-green-700">
-                  Savings vs Naive: {formatAmount(naive_optimal.total_cost - data.optimal.total_cost)}
-                </div>
+                <input 
+                  type="range" 
+                  min="1.0" max="3.0" step="0.05"
+                  value={fnMultiplier}
+                  onChange={(e) => setFnMultiplier(parseFloat(e.target.value))}
+                  className="w-full"
+                />
               </div>
-            )}
+              <div className="hidden w-px bg-pg-border md:block"></div>
+              <div className="flex flex-col justify-center flex-1">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-mono text-xs text-pg-muted">CHURN_RISK_RATE (FP_COST)</span>
+                  <span className="font-mono text-sm font-bold text-pg-amber">{fpMultiplier.toFixed(3)}X</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0.0" max="0.1" step="0.005"
+                  value={fpMultiplier}
+                  onChange={(e) => setFpMultiplier(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex items-center">
+                <button 
+                  onClick={() => { setFnMultiplier(1.15); setFpMultiplier(0.02); }}
+                  className="h-10 px-4 py-2 font-mono text-xs transition-colors bg-transparent border border-pg-border text-pg-muted hover:border-pg-cyan hover:text-pg-cyan whitespace-nowrap"
+                >
+                  [RESET_PARAMS]
+                </button>
+              </div>
+            </div>
           </div>
         </>
       )}

@@ -21,18 +21,18 @@ import {
 import { CostDashboard } from "./pages/CostDashboard";
 
 const Navbar = () => (
-  <nav className="bg-slate-900 text-white p-4">
+  <nav className="bg-pg-bg border-b border-pg-border text-pg-text p-4">
     <div className="max-w-6xl mx-auto flex justify-between items-center">
-      <div className="flex items-center space-x-2">
-        <ShieldCheck className="w-6 h-6 text-blue-400" />
-        <span className="text-xl font-bold">PulseGuard</span>
+      <div className="flex items-center space-x-3">
+        <ShieldCheck className="w-5 h-5 text-pg-cyan" />
+        <span className="text-xl font-bold tracking-tight">PULSEGUARD</span>
       </div>
-      <div className="flex space-x-6">
-        <Link to="/" className="hover:text-blue-300">
-          Merchants
+      <div className="flex space-x-6 text-sm font-medium">
+        <Link to="/" className="text-pg-muted hover:text-pg-text transition-colors">
+          MERCHANTS
         </Link>
-        <Link to="/cost" className="hover:text-blue-300">
-          Cost Curve
+        <Link to="/cost" className="text-pg-muted hover:text-pg-text transition-colors">
+          COST CURVE
         </Link>
       </div>
     </div>
@@ -51,7 +51,7 @@ const MerchantList = () => {
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Merchant Overview</h1>
+        <h1 className="text-2xl font-bold">Risk Overview</h1>
         <button
           onClick={() => {
             axios
@@ -62,59 +62,59 @@ const MerchantList = () => {
                 ),
               );
           }}
-          className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700"
+          className="bg-transparent border border-pg-border text-pg-text hover:border-pg-cyan hover:text-pg-cyan px-4 py-2 text-sm font-mono transition-colors"
         >
-          Refresh Synthetic Data
+          [REFRESH_SYNTHETICS]
         </button>
       </div>
 
-      <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden mb-8">
-        <table className="w-full text-left border-collapse">
+      <div className="bg-pg-surface border border-pg-border mb-8">
+        <table className="w-full text-left border-collapse font-mono text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 text-sm">
-              <th className="p-4 font-medium">Merchant ID</th>
-              <th className="p-4 font-medium">Risk Status</th>
-              <th className="p-4 font-medium">Total Txns</th>
-              <th className="p-4 font-medium">Flagged Windows</th>
-              <th className="p-4 font-medium">Last Flag</th>
+            <tr className="border-b border-pg-border text-pg-muted bg-[#121820]">
+              <th className="p-4 font-normal">MERCHANT_ID</th>
+              <th className="p-4 font-normal">STATUS</th>
+              <th className="p-4 font-normal">VOL_30D</th>
+              <th className="p-4 font-normal">FLAGS</th>
+              <th className="p-4 font-normal">LAST_EVENT</th>
             </tr>
           </thead>
           <tbody>
             {merchants.map((m) => (
               <tr
                 key={m.merchant_id}
-                className="border-b border-gray-100 hover:bg-gray-50"
+                className="border-b border-pg-border hover:bg-[#1C2531] transition-colors"
               >
-                <td className="p-4 text-blue-600 font-medium">
+                <td className="p-4 text-pg-cyan">
                   <div className="flex items-center space-x-2">
-                    <Link to={`/merchant/${m.merchant_id}`}>{m.merchant_id}</Link>
+                    <Link to={`/merchant/${m.merchant_id}`} className="hover:underline">{m.merchant_id}</Link>
                     {m.is_new && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 uppercase">
-                        Cold Start
+                      <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] bg-transparent border border-purple-500 text-purple-400">
+                        COLD_START
                       </span>
                     )}
                   </div>
                 </td>
                 <td className="p-4">
                   {m.status === "normal" && (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      Normal
+                    <span className="inline-flex items-center px-2 py-0.5 text-xs text-pg-cyan border border-pg-cyan/30 bg-pg-cyan/10">
+                      NORMAL
                     </span>
                   )}
                   {m.status === "watch" && (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                      Watch
+                    <span className="inline-flex items-center px-2 py-0.5 text-xs text-pg-amber border border-pg-amber/30 bg-pg-amber/10">
+                      REVIEW
                     </span>
                   )}
                   {m.status === "flagged" && (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                      Flagged
+                    <span className="inline-flex items-center px-2 py-0.5 text-xs text-pg-crimson border border-pg-crimson/30 bg-pg-crimson/10">
+                      BLOCK
                     </span>
                   )}
                 </td>
-                <td className="p-4 text-gray-600">{m.total_transactions}</td>
-                <td className="p-4 text-gray-600">{m.flagged_windows}</td>
-                <td className="p-4 text-gray-500 text-sm">
+                <td className="p-4 text-pg-text">{m.total_transactions}</td>
+                <td className="p-4 text-pg-text">{m.flagged_windows}</td>
+                <td className="p-4 text-pg-muted text-xs">
                   {m.last_flag ? new Date(m.last_flag).toLocaleString() : "—"}
                 </td>
               </tr>
@@ -135,51 +135,44 @@ const RecentActions = () => {
     axios
       .get("/api/webhooks/recent")
       .then((res) => setActions(res.data));
-    // Optional: could poll every few seconds, but since refresh is manual, once on load is fine.
   }, []);
 
   if (actions.length === 0) return null;
 
   return (
-    <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-      <div className="bg-slate-50 border-b border-gray-200 p-4">
-        <h2 className="text-lg font-bold text-slate-800">
-          Recent Actions Taken (Auto-Responder Webhooks)
+    <div className="bg-pg-surface border border-pg-border">
+      <div className="border-b border-pg-border p-4 bg-[#121820]">
+        <h2 className="text-sm font-mono text-pg-muted">
+          RECENT_ACTIONS (AUTO_RESPONDER)
         </h2>
       </div>
-      <div className="p-4">
-        <div className="space-y-4">
-          {actions.map((action, idx) => (
-            <div
-              key={idx}
-              className="border border-gray-100 bg-gray-50 p-4 rounded-md flex items-start justify-between"
-            >
-              <div>
-                <div className="flex items-center space-x-2 mb-1">
-                  <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                      action.tier === "block"
-                        ? "bg-red-100 text-red-800"
-                        : "bg-orange-100 text-orange-800"
-                    }`}
-                  >
-                    {action.tier.toUpperCase()}
-                  </span>
-                  <span className="font-mono text-sm text-gray-600">
-                    {action.transaction_id}
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    ({action.merchant_id})
-                  </span>
-                </div>
-                <p className="text-sm text-gray-700">{action.reason}</p>
+      <div className="p-4 space-y-2">
+        {actions.map((action, idx) => (
+          <div
+            key={idx}
+            className="border border-pg-border bg-pg-bg p-3 flex items-start justify-between font-mono text-sm"
+          >
+            <div>
+              <div className="flex items-center space-x-3 mb-1">
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 text-xs ${
+                    action.tier === "block"
+                      ? "text-pg-crimson border border-pg-crimson/30 bg-pg-crimson/10"
+                      : "text-pg-amber border border-pg-amber/30 bg-pg-amber/10"
+                  }`}
+                >
+                  {action.tier.toUpperCase()}
+                </span>
+                <span className="text-pg-text">{action.transaction_id}</span>
+                <span className="text-pg-muted">({action.merchant_id})</span>
               </div>
-              <div className="text-right text-xs text-gray-400">
-                {new Date(action.fired_at).toLocaleTimeString()}
-              </div>
+              <p className="text-xs text-pg-muted font-sans mt-2">{action.reason}</p>
             </div>
-          ))}
-        </div>
+            <div className="text-right text-xs text-pg-muted">
+              {new Date(action.fired_at).toLocaleTimeString()}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -256,23 +249,23 @@ const MerchantDetail = () => {
   const displayWebhooks = webhooks.filter((w: any) => displayTxnIds.has(w.transaction_id));
 
   return (
-    <div className="p-8 max-w-6xl mx-auto space-y-8">
+    <div className="p-8 max-w-6xl mx-auto space-y-6">
       <div>
         <Link
           to="/"
-          className="text-blue-600 hover:underline mb-2 inline-block"
+          className="text-pg-cyan hover:underline mb-4 inline-block text-sm font-mono"
         >
-          &larr; Back to Overview
+          &larr; BACK_TO_OVERVIEW
         </Link>
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-4">
-            <h1 className="text-3xl font-bold">{id} Risk Detail</h1>
+            <h1 className="text-2xl font-bold font-mono tracking-tight">{id}_RISK_DETAIL</h1>
             {timeline.is_new && (
-              <div className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium flex items-center shadow-sm">
-                <span className="mr-2">Cold Start Mode ({timeline.tier} Prior)</span>
-                <div className="w-16 h-2 bg-purple-200 rounded-full overflow-hidden">
+              <div className="bg-transparent border border-purple-500 text-purple-400 px-2 py-0.5 text-xs font-mono flex items-center">
+                <span className="mr-2">COLD_START_MODE ({timeline.tier.toUpperCase()})</span>
+                <div className="w-16 h-1 bg-[#121820] overflow-hidden ml-2">
                   <div 
-                    className="h-full bg-purple-600" 
+                    className="h-full bg-purple-500" 
                     style={{ width: `${Math.max(5, timeline.blend_progress * 100)}%` }}
                   ></div>
                 </div>
@@ -281,8 +274,8 @@ const MerchantDetail = () => {
           </div>
           
           {/* Replay Controls */}
-          <div className="flex items-center space-x-4 bg-gray-100 px-4 py-2 rounded-lg shadow-inner">
-            <div className="text-sm font-bold text-gray-700">Replay Mode:</div>
+          <div className="flex items-center space-x-4 bg-pg-surface border border-pg-border px-4 py-2 font-mono text-sm">
+            <div className="text-pg-muted">REPLAY_MODE:</div>
             <button
               onClick={() => {
                 if (currentTimeIndex === fullTimeline.length - 1) {
@@ -290,48 +283,50 @@ const MerchantDetail = () => {
                 }
                 setIsPlaying(!isPlaying);
               }}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm font-medium shadow"
+              className="bg-transparent border border-pg-cyan text-pg-cyan hover:bg-pg-cyan/10 px-3 py-1 transition-colors"
             >
-              {isPlaying ? "Pause" : "Play"}
+              {isPlaying ? "[PAUSE]" : "[PLAY]"}
             </button>
-            <div className="flex items-center space-x-1 border border-gray-300 rounded overflow-hidden">
+            <div className="flex items-center space-x-1">
               {[1, 4, 10].map(speed => (
                 <button
                   key={speed}
                   onClick={() => setPlaybackSpeed(speed)}
-                  className={`px-2 py-1 text-xs font-bold ${playbackSpeed === speed ? 'bg-blue-100 text-blue-800' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                  className={`px-2 py-1 text-xs border ${playbackSpeed === speed ? 'border-pg-cyan text-pg-cyan bg-pg-cyan/10' : 'border-pg-border text-pg-muted hover:text-pg-text'}`}
                 >
-                  {speed}x
+                  {speed}X
                 </button>
               ))}
             </div>
             <button
               onClick={() => { setIsPlaying(false); setCurrentTimeIndex(-1); }}
-              className="text-sm text-gray-500 hover:text-gray-800 font-medium ml-2"
+              className="text-pg-muted hover:text-pg-text ml-2"
             >
-              Reset
+              [RESET]
             </button>
           </div>
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold">
-            Volume & Ticket Size Timeline
+      <div className="bg-pg-surface border border-pg-border">
+        <div className="flex justify-between items-center p-4 border-b border-pg-border bg-[#121820]">
+          <h2 className="text-sm font-mono text-pg-muted">
+            VOLUME_AND_TICKET_SIZE
           </h2>
           {currentTimeIndex !== -1 && (
-            <div className="text-sm font-mono bg-blue-50 text-blue-800 px-2 py-1 rounded border border-blue-100">
-              {new Date(currentTimestamp).toLocaleString()}
+            <div className="text-xs font-mono text-pg-cyan bg-pg-cyan/10 border border-pg-cyan/30 px-2 py-0.5">
+              T={new Date(currentTimestamp).toISOString()}
             </div>
           )}
         </div>
-        <div className="h-72">
+        <div className="h-72 p-4">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={displayTimeline}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2D3748" vertical={false} />
               <XAxis
                 dataKey="timestamp"
+                stroke="#94A3B8"
+                tick={{fill: '#94A3B8', fontSize: 12, fontFamily: 'JetBrains Mono'}}
                 tickFormatter={(val) =>
                   new Date(val).toLocaleTimeString([], {
                     hour: "2-digit",
@@ -339,28 +334,31 @@ const MerchantDetail = () => {
                   })
                 }
               />
-              <YAxis yAxisId="left" />
-              <YAxis yAxisId="right" orientation="right" />
+              <YAxis yAxisId="left" stroke="#94A3B8" tick={{fill: '#94A3B8', fontSize: 12, fontFamily: 'JetBrains Mono'}} />
+              <YAxis yAxisId="right" orientation="right" stroke="#94A3B8" tick={{fill: '#94A3B8', fontSize: 12, fontFamily: 'JetBrains Mono'}} />
               <Tooltip
+                contentStyle={{ backgroundColor: '#1A2027', borderColor: '#2D3748', color: '#E2E8F0', fontFamily: 'JetBrains Mono' }}
                 labelFormatter={(val) => new Date(val).toLocaleString()}
               />
               <Line
                 yAxisId="left"
                 type="monotone"
                 dataKey="volume"
-                stroke="#3b82f6"
+                stroke="#38BDF8"
                 dot={false}
                 name="Volume (txns/hr)"
                 isAnimationActive={false}
+                strokeWidth={2}
               />
               <Line
                 yAxisId="right"
                 type="monotone"
                 dataKey="ticket_size"
-                stroke="#10b981"
+                stroke="#94A3B8"
                 dot={false}
                 name="Avg Ticket Size (₹)"
                 isAnimationActive={false}
+                strokeWidth={2}
               />
               {displayWindows.map((fw: any, idx: number) => (
                 <ReferenceArea
@@ -369,9 +367,9 @@ const MerchantDetail = () => {
                   x1={fw.timestamp}
                   x2={new Date(
                     new Date(fw.timestamp).getTime() + 3600000,
-                  ).toISOString()} // 1 hour wide
-                  fill="#ef4444"
-                  fillOpacity={0.2}
+                  ).toISOString()}
+                  fill="#E11D48"
+                  fillOpacity={0.15}
                 />
               ))}
             </LineChart>
@@ -379,97 +377,100 @@ const MerchantDetail = () => {
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
-        <h2 className="text-lg font-bold mb-4">
-          Flagged Anomalies & Webhooks
-        </h2>
-        {displayAuditLog.length > 0 && (
-          <div className="mb-6 bg-red-50 p-4 rounded text-red-900 border border-red-100">
-            <h3 className="font-bold mb-2">Stage 1 Audit Log:</h3>
-            <ul className="list-disc pl-5 space-y-1 text-sm">
-              {displayAuditLog.slice(-10).map((log: string, i: number) => (
-                <li key={i}>{log}</li>
-              ))}
-            </ul>
-          </div>
-        )}
+      <div className="bg-pg-surface border border-pg-border">
+        <div className="p-4 border-b border-pg-border bg-[#121820]">
+          <h2 className="text-sm font-mono text-pg-muted">
+            FLAGGED_ANOMALIES_STAGE_2
+          </h2>
+        </div>
+        
+        <div className="p-4">
+          {displayAuditLog.length > 0 && (
+            <div className="mb-6 bg-[#1A1016] p-4 border border-pg-crimson/30">
+              <h3 className="font-mono text-sm text-pg-crimson mb-2">STAGE_1_REGIME_BREAK_LOG:</h3>
+              <ul className="list-disc pl-5 space-y-1 font-mono text-xs text-pg-text">
+                {displayAuditLog.slice(-10).map((log: string, i: number) => (
+                  <li key={i}>{log}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-        <table className="w-full text-left border-collapse text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="p-3 font-medium">Transaction ID</th>
-              <th className="p-3 font-medium">Window</th>
-              <th className="p-3 font-medium">Isolation Score</th>
-              <th className="p-3 font-medium">Action Tier</th>
-              <th className="p-3 font-medium">Reason (Feature Drivers)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayTransactions.slice(0, 50).map((txn: any) => {
-              const webhook = displayWebhooks.find(w => w.transaction_id === txn.transaction_id);
-              const tier = webhook ? webhook.tier : "allow";
-              return (
-                <tr key={txn.transaction_id} className={`border-b border-gray-100 ${webhook ? 'bg-orange-50' : ''}`}>
-                  <td className="p-3 font-mono text-xs">{txn.transaction_id}</td>
-                  <td className="p-3">{new Date(txn.window).toLocaleString()}</td>
-                  <td className="p-3 font-medium text-red-600">
-                    {txn.score.toFixed(3)}
-                  </td>
-                  <td className="p-3">
-                    {tier === 'block' && <span className="bg-red-100 text-red-800 px-2 py-0.5 rounded text-xs font-bold uppercase">Block</span>}
-                    {tier === 'review' && <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs font-bold uppercase">Review</span>}
-                    {tier === 'allow' && <span className="text-gray-400 text-xs">Allow</span>}
-                  </td>
-                  <td className="p-3 text-gray-700">
-                    {txn.reason || "Unknown anomaly"}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-        {displayTransactions.length === 0 && (
-          <div className="text-center p-8 text-gray-500">
-            No transactions flagged yet.
-          </div>
-        )}
+          <table className="w-full text-left border-collapse font-mono text-sm">
+            <thead>
+              <tr className="border-b border-pg-border text-pg-muted bg-[#121820]">
+                <th className="p-3 font-normal">TXN_ID</th>
+                <th className="p-3 font-normal">WINDOW</th>
+                <th className="p-3 font-normal">SCORE</th>
+                <th className="p-3 font-normal">ACTION</th>
+                <th className="p-3 font-normal">FEATURE_DRIVERS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayTransactions.slice(0, 50).map((txn: any) => {
+                const webhook = displayWebhooks.find(w => w.transaction_id === txn.transaction_id);
+                const tier = webhook ? webhook.tier : "allow";
+                return (
+                  <tr key={txn.transaction_id} className={`border-b border-pg-border ${webhook ? 'bg-[#2D1A16]' : 'hover:bg-[#1C2531]'}`}>
+                    <td className="p-3 text-pg-cyan">{txn.transaction_id}</td>
+                    <td className="p-3 text-pg-text">{new Date(txn.window).toLocaleString()}</td>
+                    <td className="p-3 font-medium text-pg-crimson">
+                      {txn.score.toFixed(3)}
+                    </td>
+                    <td className="p-3">
+                      {tier === 'block' && <span className="text-pg-crimson border border-pg-crimson/30 bg-pg-crimson/10 px-2 py-0.5 text-xs">BLOCK</span>}
+                      {tier === 'review' && <span className="text-pg-amber border border-pg-amber/30 bg-pg-amber/10 px-2 py-0.5 text-xs">REVIEW</span>}
+                      {tier === 'allow' && <span className="text-pg-muted text-xs">ALLOW</span>}
+                    </td>
+                    <td className="p-3 text-pg-text text-xs">
+                      {txn.reason || "Unknown anomaly"}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          {displayTransactions.length === 0 && (
+            <div className="text-center p-8 text-pg-muted font-mono text-sm">
+              [NO_ANOMALIES_DETECTED]
+            </div>
+          )}
+        </div>
       </div>
 
       {displayWebhooks.length > 0 && (
-        <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-          <div className="bg-slate-50 border-b border-gray-200 p-4 flex justify-between items-center">
-            <h2 className="text-lg font-bold text-slate-800">
-              Auto-Responder Webhooks Sent
+        <div className="bg-pg-surface border border-pg-border">
+          <div className="border-b border-pg-border p-4 bg-[#121820] flex justify-between items-center">
+            <h2 className="text-sm font-mono text-pg-muted">
+              WEBHOOK_NOTIFICATIONS_SENT
             </h2>
-            <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded-full">
-              {displayWebhooks.length} Actions
+            <span className="text-pg-cyan border border-pg-cyan/30 bg-pg-cyan/10 text-xs px-2 py-0.5 font-mono">
+              COUNT: {displayWebhooks.length}
             </span>
           </div>
-          <div className="p-4 space-y-4">
+          <div className="p-4 space-y-2">
             {displayWebhooks.map((action: any, idx: number) => (
               <div
                 key={idx}
-                className="border border-gray-100 bg-gray-50 p-4 rounded-md flex items-start justify-between"
+                className="border border-pg-border bg-pg-bg p-3 flex items-start justify-between font-mono text-sm"
               >
                 <div>
-                  <div className="flex items-center space-x-2 mb-1">
+                  <div className="flex items-center space-x-3 mb-1">
                     <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      className={`inline-flex items-center px-2 py-0.5 text-xs ${
                         action.tier === "block"
-                          ? "bg-red-100 text-red-800"
-                          : "bg-orange-100 text-orange-800"
+                          ? "text-pg-crimson border border-pg-crimson/30 bg-pg-crimson/10"
+                          : "text-pg-amber border border-pg-amber/30 bg-pg-amber/10"
                       }`}
                     >
                       {action.tier.toUpperCase()}
                     </span>
-                    <span className="font-mono text-sm text-gray-600">
-                      {action.transaction_id}
-                    </span>
+                    <span className="text-pg-text">{action.transaction_id}</span>
                   </div>
-                  <p className="text-sm text-gray-700">{action.reason}</p>
+                  <p className="text-xs text-pg-muted font-sans mt-2">{action.reason}</p>
                 </div>
-                <div className="text-right text-xs font-mono text-gray-400">
-                  SENT: {new Date(action.fired_at).toLocaleTimeString()}
+                <div className="text-right text-xs text-pg-muted">
+                  {new Date(action.fired_at).toLocaleTimeString()}
                 </div>
               </div>
             ))}
@@ -483,7 +484,7 @@ const MerchantDetail = () => {
 export default function App() {
   return (
     <Router>
-      <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="min-h-screen bg-pg-bg text-pg-text flex flex-col">
         <Navbar />
         <main className="flex-1">
           <Routes>
