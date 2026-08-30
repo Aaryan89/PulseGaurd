@@ -36,5 +36,14 @@ If you want to run the application outside of Docker for quick debugging:
    ```
    (The frontend will proxy `/api` requests to `localhost:8000` automatically during local dev).
 
+## Testing
+The repository includes a fast test suite verifying the core mathematical, detection, and data generation logic.
+
+To run the tests:
+```bash
+pytest
+```
+(A GitHub Action is also included to run these automatically on push).
+
 ## Configuration
 See `.env.example` for configurable variables, including ports, webhook settings, and cost model defaults.

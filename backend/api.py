@@ -326,5 +326,84 @@ async def get_recent_webhooks():
     return webhook_manager.get_recent_notifications()
 
 @app.get("/cost-curve")
-async def get_cost_curve():
-    return state.cost_data
+async def get_cost_curve(fn_multiplier: float = None, fp_multiplier: float = None):
+    if state.df is None or not state.cost_data:
+        return state.cost_data
+        
+    if fn_multiplier is None and fp_multiplier is None:
+        return state.cost_data
+        
+    # User provided overrides
+    fn_mult = fn_multiplier if fn_multiplier is not None else float(os.getenv("COST_FN_MULTIPLIER", "1.15"))
+    fp_mult = fp_multiplier if fp_multiplier is not None else float(os.getenv("COST_FP_MULTIPLIER", "0.02"))
+    
+    df = state.df
+    y_true = df['is_anomaly'].astype(int).tolist()
+    y_scores = df['model_score'].tolist()
+    amounts = df['amount'].tolist()
+    
+    if_scores = df[df['model_score'] > -10.0]['model_score']
+    if if_scores.empty:
+        return state.cost_data
+        
+    min_score, max_score = float(if_scores.min()), float(if_scores.max())
+    thresholds = np.linspace(min_score - 0.1, max_score + 0.1, 50).tolist()
+    
+    optimal = find_optimal_threshold(
+        y_true=y_true, y_scores=y_scores, thresholds=thresholds, 
+        amounts=amounts, fn_multiplier=fn_mult, fp_multiplier=fp_mult
+    )
+    
+    boot = bootstrap_cost_estimate(
+        y_true=y_true, y_scores=y_scores, amounts=amounts, threshold=optimal['threshold']
+    )
+    
+    from backend.cost_model import evaluate_threshold_costs
+    curve = evaluate_threshold_costs(
+        y_true, y_scores, thresholds, amounts, fn_multiplier=fn_mult, fp_multiplier=fp_mult
+    )
+    
+    from backend.baseline import detect_naive
+    naive_scores = detect_naive(df)
+    naive_thresholds = np.linspace(df['amount'].min(), df['amount'].max(), 50).tolist()
+    
+    optimal_naive = find_optimal_threshold(
+        y_true=y_true, y_scores=naive_scores, thresholds=naive_thresholds,
+        amounts=amounts, fn_multiplier=fn_mult, fp_multiplier=fp_mult
+    )
+    
+    new_cost_data = dict(state.cost_data)
+    new_cost_data["curve"] = curve
+    new_cost_data["optimal"] = optimal
+    new_cost_data["bootstrap"] = boot
+    new_cost_data["baseline_cost"] = sum(amount * fn_mult for amount, is_anom in zip(amounts, y_true) if is_anom == 1)
+    new_cost_data["naive_optimal"] = optimal_naive
+    
+    # Recompute segments so sliders work everywhere
+    segments_data = {}
+    for tier in ["Low Volume", "Medium Volume", "High Volume"]:
+        t_df = df[df['merchant_tier'] == tier]
+        ty_true = t_df['is_anomaly'].astype(int).tolist()
+        ty_scores = t_df['model_score'].tolist()
+        tamounts = t_df['amount'].tolist()
+        
+        tif_scores = t_df[t_df['model_score'] > -10.0]['model_score']
+        if not tif_scores.empty:
+            t_thresh = np.linspace(float(tif_scores.min()) - 0.1, float(tif_scores.max()) + 0.1, 50).tolist()
+            t_curve = evaluate_threshold_costs(ty_true, ty_scores, t_thresh, tamounts, fn_mult, fp_mult)
+            t_opt = find_optimal_threshold(ty_true, ty_scores, t_thresh, tamounts, fn_mult, fp_mult)
+            
+            # Keep original tiered_optimal for now since we aren't rebuilding that deeply
+            orig_tiered = state.cost_data.get("segments", {}).get(tier, {}).get("tiered_optimal")
+            
+            segments_data[tier] = {
+                "curve": t_curve,
+                "optimal": t_opt,
+                "tiered_optimal": orig_tiered
+            }
+        else:
+            segments_data[tier] = None
+            
+    new_cost_data["segments"] = segments_data
+    
+    return new_cost_data

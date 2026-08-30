@@ -10,9 +10,15 @@ export const CostDashboard = () => {
   
   const EXCHANGE_RATE = 1 / 83.0; // Fixed illustrative rate: 1 INR = ~0.012 USD
 
+  const [fnMultiplier, setFnMultiplier] = useState<number>(1.15);
+  const [fpMultiplier, setFpMultiplier] = useState<number>(0.02);
+
   useEffect(() => {
-    axios.get('/api/cost-curve').then(res => setData(res.data));
-  }, []);
+    const handler = setTimeout(() => {
+      axios.get(`/api/cost-curve?fn_multiplier=${fnMultiplier}&fp_multiplier=${fpMultiplier}`).then(res => setData(res.data));
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [fnMultiplier, fpMultiplier]);
 
   if (!data || !data.curve) return <div className="p-8">Loading Cost Data...</div>;
 
@@ -80,6 +86,48 @@ export const CostDashboard = () => {
               <option value="Medium Volume">Medium Volume</option>
               <option value="High Volume">High Volume</option>
             </select>
+          </div>
+        </div>
+      </div>
+      
+      <div className="bg-white p-6 border border-gray-200 rounded-lg shadow mb-8">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-bold">Interactive Cost Assumptions</h2>
+          <button 
+            onClick={() => { setFnMultiplier(1.15); setFpMultiplier(0.02); }}
+            className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 px-3 rounded font-medium"
+          >
+            Reset to Defaults
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
+            <label className="flex justify-between text-sm font-medium text-gray-700 mb-2">
+              <span>Chargeback Fee Rate (False Negative Cost)</span>
+              <span className="font-bold text-red-600">{(fnMultiplier).toFixed(2)}x</span>
+            </label>
+            <input 
+              type="range" 
+              min="1.0" max="3.0" step="0.05"
+              value={fnMultiplier}
+              onChange={(e) => setFnMultiplier(parseFloat(e.target.value))}
+              className="w-full accent-blue-600"
+            />
+            <p className="text-xs text-gray-500 mt-1">Multiplier on the transaction amount lost to missed fraud (1.0 = item value, + fees).</p>
+          </div>
+          <div>
+            <label className="flex justify-between text-sm font-medium text-gray-700 mb-2">
+              <span>Churn-Risk Rate (False Positive Cost)</span>
+              <span className="font-bold text-blue-600">{(fpMultiplier).toFixed(3)}x</span>
+            </label>
+            <input 
+              type="range" 
+              min="0.0" max="0.1" step="0.005"
+              value={fpMultiplier}
+              onChange={(e) => setFpMultiplier(parseFloat(e.target.value))}
+              className="w-full accent-blue-600"
+            />
+            <p className="text-xs text-gray-500 mt-1">Multiplier representing lost lifetime value from blocking a good customer.</p>
           </div>
         </div>
       </div>

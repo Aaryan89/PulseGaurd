@@ -39,6 +39,7 @@ def evaluate_new_merchant():
             'volume': {'mean': t_agg['volume'].mean(), 'std': t_agg['volume'].std()},
             'ticket_size': {'mean': t_agg['ticket_size'].mean(), 'std': t_agg['ticket_size'].std()},
             'velocity': {'mean': t_agg['velocity'].mean(), 'std': t_agg['velocity'].std()}
+        }
     new_m_df = df[df['merchant_id'] == new_merchant_id].copy()
     tier = new_m_df['merchant_tier'].iloc[0]
     
