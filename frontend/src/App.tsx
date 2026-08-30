@@ -189,6 +189,12 @@ const MerchantDetail = () => {
   const { id } = useParams();
   const [timeline, setTimeline] = useState<any>(null);
   const [flags, setFlags] = useState<any>(null);
+  const [webhooks, setWebhooks] = useState<any[]>([]);
+
+  // Replay State
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [currentTimeIndex, setCurrentTimeIndex] = useState(-1);
 
   useEffect(() => {
     axios
@@ -197,9 +203,57 @@ const MerchantDetail = () => {
     axios
       .get(`/api/merchants/${id}/flags`)
       .then((res) => setFlags(res.data));
+    axios
+      .get(`/api/webhooks/recent`)
+      .then((res) => setWebhooks(res.data.filter((w: any) => w.merchant_id === id)));
   }, [id]);
 
+  useEffect(() => {
+    if (!isPlaying || !timeline?.timeline) return;
+
+    const fullTimeline = timeline.timeline;
+    const interval = setInterval(() => {
+      setCurrentTimeIndex((prev) => {
+        // If starting fresh
+        if (prev === -1) return 0;
+        // If reached end
+        if (prev >= fullTimeline.length - 1) {
+          setIsPlaying(false);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, 1000 / playbackSpeed);
+
+    return () => clearInterval(interval);
+  }, [isPlaying, playbackSpeed, timeline]);
+
   if (!timeline || !flags) return <div className="p-8">Loading...</div>;
+
+  const fullTimeline = timeline.timeline;
+  const effectiveIndex = currentTimeIndex === -1 ? fullTimeline.length - 1 : currentTimeIndex;
+  const currentTimestampStr = fullTimeline[effectiveIndex]?.timestamp;
+  const currentTimestamp = new Date(currentTimestampStr).getTime();
+
+  // Filter Data based on Replay Time
+  const displayTimeline = fullTimeline.slice(0, effectiveIndex + 1);
+  const displayWindows = timeline.flagged_windows.filter(
+    (fw: any) => new Date(fw.timestamp).getTime() <= currentTimestamp
+  );
+  const displayAuditLog = flags.audit_log.filter((log: string) => {
+    const match = log.match(/at (.*)$/);
+    if (match) {
+      return new Date(match[1]).getTime() <= currentTimestamp;
+    }
+    return true;
+  });
+  const displayTransactions = flags.flagged_transactions.filter(
+    (txn: any) => new Date(txn.window).getTime() <= currentTimestamp
+  );
+  
+  // Find webhooks matching the displayed transactions
+  const displayTxnIds = new Set(displayTransactions.map((t: any) => t.transaction_id));
+  const displayWebhooks = webhooks.filter((w: any) => displayTxnIds.has(w.transaction_id));
 
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-8">
@@ -210,29 +264,71 @@ const MerchantDetail = () => {
         >
           &larr; Back to Overview
         </Link>
-        <div className="flex items-center space-x-4 mb-2">
-          <h1 className="text-3xl font-bold">{id} Risk Detail</h1>
-          {timeline.is_new && (
-            <div className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium flex items-center shadow-sm">
-              <span className="mr-2">Cold Start Mode ({timeline.tier} Prior)</span>
-              <div className="w-16 h-2 bg-purple-200 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-purple-600" 
-                  style={{ width: `${Math.max(5, timeline.blend_progress * 100)}%` }}
-                ></div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center space-x-4">
+            <h1 className="text-3xl font-bold">{id} Risk Detail</h1>
+            {timeline.is_new && (
+              <div className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium flex items-center shadow-sm">
+                <span className="mr-2">Cold Start Mode ({timeline.tier} Prior)</span>
+                <div className="w-16 h-2 bg-purple-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-purple-600" 
+                    style={{ width: `${Math.max(5, timeline.blend_progress * 100)}%` }}
+                  ></div>
+                </div>
               </div>
+            )}
+          </div>
+          
+          {/* Replay Controls */}
+          <div className="flex items-center space-x-4 bg-gray-100 px-4 py-2 rounded-lg shadow-inner">
+            <div className="text-sm font-bold text-gray-700">Replay Mode:</div>
+            <button
+              onClick={() => {
+                if (currentTimeIndex === fullTimeline.length - 1) {
+                  setCurrentTimeIndex(0);
+                }
+                setIsPlaying(!isPlaying);
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm font-medium shadow"
+            >
+              {isPlaying ? "Pause" : "Play"}
+            </button>
+            <div className="flex items-center space-x-1 border border-gray-300 rounded overflow-hidden">
+              {[1, 4, 10].map(speed => (
+                <button
+                  key={speed}
+                  onClick={() => setPlaybackSpeed(speed)}
+                  className={`px-2 py-1 text-xs font-bold ${playbackSpeed === speed ? 'bg-blue-100 text-blue-800' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                >
+                  {speed}x
+                </button>
+              ))}
             </div>
-          )}
+            <button
+              onClick={() => { setIsPlaying(false); setCurrentTimeIndex(-1); }}
+              className="text-sm text-gray-500 hover:text-gray-800 font-medium ml-2"
+            >
+              Reset
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
-        <h2 className="text-lg font-bold mb-4">
-          Volume & Ticket Size Timeline
-        </h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-bold">
+            Volume & Ticket Size Timeline
+          </h2>
+          {currentTimeIndex !== -1 && (
+            <div className="text-sm font-mono bg-blue-50 text-blue-800 px-2 py-1 rounded border border-blue-100">
+              {new Date(currentTimestamp).toLocaleString()}
+            </div>
+          )}
+        </div>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={timeline.timeline}>
+            <LineChart data={displayTimeline}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis
                 dataKey="timestamp"
@@ -255,6 +351,7 @@ const MerchantDetail = () => {
                 stroke="#3b82f6"
                 dot={false}
                 name="Volume (txns/hr)"
+                isAnimationActive={false}
               />
               <Line
                 yAxisId="right"
@@ -263,8 +360,9 @@ const MerchantDetail = () => {
                 stroke="#10b981"
                 dot={false}
                 name="Avg Ticket Size (₹)"
+                isAnimationActive={false}
               />
-              {timeline.flagged_windows.map((fw: any, idx: number) => (
+              {displayWindows.map((fw: any, idx: number) => (
                 <ReferenceArea
                   key={idx}
                   yAxisId="left"
@@ -283,19 +381,18 @@ const MerchantDetail = () => {
 
       <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
         <h2 className="text-lg font-bold mb-4">
-          Flagged Anomalies (Stage 2 Isolation Forest)
+          Flagged Anomalies & Webhooks
         </h2>
-        <div className="mb-6 bg-red-50 p-4 rounded text-red-900 border border-red-100">
-          <h3 className="font-bold mb-2">Stage 1 Audit Log:</h3>
-          <ul className="list-disc pl-5 space-y-1 text-sm">
-            {flags.audit_log.slice(0, 10).map((log: string, i: number) => (
-              <li key={i}>{log}</li>
-            ))}
-            {flags.audit_log.length > 10 && (
-              <li>...and {flags.audit_log.length - 10} more regime breaks</li>
-            )}
-          </ul>
-        </div>
+        {displayAuditLog.length > 0 && (
+          <div className="mb-6 bg-red-50 p-4 rounded text-red-900 border border-red-100">
+            <h3 className="font-bold mb-2">Stage 1 Audit Log:</h3>
+            <ul className="list-disc pl-5 space-y-1 text-sm">
+              {displayAuditLog.slice(-10).map((log: string, i: number) => (
+                <li key={i}>{log}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <table className="w-full text-left border-collapse text-sm">
           <thead>
@@ -303,30 +400,82 @@ const MerchantDetail = () => {
               <th className="p-3 font-medium">Transaction ID</th>
               <th className="p-3 font-medium">Window</th>
               <th className="p-3 font-medium">Isolation Score</th>
+              <th className="p-3 font-medium">Action Tier</th>
               <th className="p-3 font-medium">Reason (Feature Drivers)</th>
             </tr>
           </thead>
           <tbody>
-            {flags.flagged_transactions.slice(0, 50).map((txn: any) => (
-              <tr key={txn.transaction_id} className="border-b border-gray-100">
-                <td className="p-3 font-mono text-xs">{txn.transaction_id}</td>
-                <td className="p-3">{new Date(txn.window).toLocaleString()}</td>
-                <td className="p-3 font-medium text-red-600">
-                  {txn.score.toFixed(3)}
-                </td>
-                <td className="p-3 text-gray-700">
-                  {txn.reason || "Unknown anomaly"}
-                </td>
-              </tr>
-            ))}
+            {displayTransactions.slice(0, 50).map((txn: any) => {
+              const webhook = displayWebhooks.find(w => w.transaction_id === txn.transaction_id);
+              const tier = webhook ? webhook.tier : "allow";
+              return (
+                <tr key={txn.transaction_id} className={`border-b border-gray-100 ${webhook ? 'bg-orange-50' : ''}`}>
+                  <td className="p-3 font-mono text-xs">{txn.transaction_id}</td>
+                  <td className="p-3">{new Date(txn.window).toLocaleString()}</td>
+                  <td className="p-3 font-medium text-red-600">
+                    {txn.score.toFixed(3)}
+                  </td>
+                  <td className="p-3">
+                    {tier === 'block' && <span className="bg-red-100 text-red-800 px-2 py-0.5 rounded text-xs font-bold uppercase">Block</span>}
+                    {tier === 'review' && <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs font-bold uppercase">Review</span>}
+                    {tier === 'allow' && <span className="text-gray-400 text-xs">Allow</span>}
+                  </td>
+                  <td className="p-3 text-gray-700">
+                    {txn.reason || "Unknown anomaly"}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
-        {flags.flagged_transactions.length > 50 && (
-          <div className="text-center p-4 text-gray-500 text-sm">
-            Showing 50 of {flags.flagged_transactions.length} transactions
+        {displayTransactions.length === 0 && (
+          <div className="text-center p-8 text-gray-500">
+            No transactions flagged yet.
           </div>
         )}
       </div>
+
+      {displayWebhooks.length > 0 && (
+        <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+          <div className="bg-slate-50 border-b border-gray-200 p-4 flex justify-between items-center">
+            <h2 className="text-lg font-bold text-slate-800">
+              Auto-Responder Webhooks Sent
+            </h2>
+            <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded-full">
+              {displayWebhooks.length} Actions
+            </span>
+          </div>
+          <div className="p-4 space-y-4">
+            {displayWebhooks.map((action: any, idx: number) => (
+              <div
+                key={idx}
+                className="border border-gray-100 bg-gray-50 p-4 rounded-md flex items-start justify-between"
+              >
+                <div>
+                  <div className="flex items-center space-x-2 mb-1">
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                        action.tier === "block"
+                          ? "bg-red-100 text-red-800"
+                          : "bg-orange-100 text-orange-800"
+                      }`}
+                    >
+                      {action.tier.toUpperCase()}
+                    </span>
+                    <span className="font-mono text-sm text-gray-600">
+                      {action.transaction_id}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-700">{action.reason}</p>
+                </div>
+                <div className="text-right text-xs font-mono text-gray-400">
+                  SENT: {new Date(action.fired_at).toLocaleTimeString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
