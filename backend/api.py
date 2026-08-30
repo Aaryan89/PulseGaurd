@@ -39,12 +39,53 @@ def run_pipeline():
         df = generate_dataset(num_merchants=5, days=15) # Smaller dataset for faster refresh during pitch
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         
+        # --- Tier Assignment & Priors ---
+        merchant_vols = df.groupby('merchant_id').size()
+        q33, q67 = merchant_vols.quantile([0.33, 0.67])
+        def get_tier(vol):
+            if vol <= q33: return "Low Volume"
+            if vol <= q67: return "Medium Volume"
+            return "High Volume"
+            
+        df['merchant_tier'] = df['merchant_id'].map(merchant_vols.apply(get_tier))
+        
+        # Calculate priors for each tier
+        tier_priors_map = {}
+        agg_cols = ['volume', 'ticket_size', 'velocity']
+        
+        for tier in ["Low Volume", "Medium Volume", "High Volume"]:
+            tier_df = df[df['merchant_tier'] == tier].copy()
+            if tier_df.empty:
+                continue
+                
+            tier_df['time_diff'] = tier_df.groupby('merchant_id')['timestamp'].diff().dt.total_seconds().fillna(0)
+            
+            # Aggregate by hour across all merchants in tier
+            t_agg = tier_df.set_index('timestamp').resample('1h').agg(
+                volume=('transaction_id', 'count'),
+                ticket_size=('amount', 'mean'),
+                velocity=('time_diff', 'mean')
+            ).fillna(0)
+            
+            # Normalize volume per merchant
+            num_merch_in_tier = tier_df['merchant_id'].nunique()
+            t_agg['volume'] = t_agg['volume'] / num_merch_in_tier
+            
+            tier_priors_map[tier] = {
+                'volume': {'mean': t_agg['volume'].mean(), 'std': t_agg['volume'].std()},
+                'ticket_size': {'mean': t_agg['ticket_size'].mean(), 'std': t_agg['ticket_size'].std()},
+                'velocity': {'mean': t_agg['velocity'].mean(), 'std': t_agg['velocity'].std()}
+            }
+            
         # 2. Detect
-        config = DetectionConfig()
         merchant_results = {}
         df['model_score'] = -10.0
         
         for merchant_id, m_df in df.groupby('merchant_id'):
+            tier = m_df['merchant_tier'].iloc[0]
+            config = DetectionConfig()
+            config.tier_priors = tier_priors_map.get(tier, {})
+            
             res = detect(m_df, config)
             merchant_results[merchant_id] = res
             
@@ -63,9 +104,14 @@ def run_pipeline():
             min_score, max_score = float(if_scores.min()), float(if_scores.max())
             thresholds = np.linspace(min_score - 0.1, max_score + 0.1, 50).tolist()
             
+            # Get cost defaults from env
+            fn_mult = float(os.getenv("COST_FN_MULTIPLIER", "1.15"))
+            fp_mult = float(os.getenv("COST_FP_MULTIPLIER", "0.02"))
+            review_cost = float(os.getenv("COST_PER_REVIEW", "50.0"))
+            
             optimal = find_optimal_threshold(
                 y_true=y_true, y_scores=y_scores, thresholds=thresholds, 
-                amounts=amounts, fn_multiplier=1.15, fp_multiplier=0.02
+                amounts=amounts, fn_multiplier=fn_mult, fp_multiplier=fp_mult
             )
             
             boot = bootstrap_cost_estimate(
@@ -73,11 +119,9 @@ def run_pipeline():
             )
             
             # Reconstruct the full curve for plotting
-            # We don't have evaluate_threshold_costs exposed directly here so we'll just run find_optimal which returns the min,
-            # wait, we need the full curve. evaluate_threshold_costs isn't imported. Let me import it.
             from backend.cost_model import evaluate_threshold_costs
             curve = evaluate_threshold_costs(
-                y_true, y_scores, thresholds, amounts, fn_multiplier=1.15, fp_multiplier=0.02
+                y_true, y_scores, thresholds, amounts, fn_multiplier=fn_mult, fp_multiplier=fp_mult
             )
             
             # --- Naive Baseline ---
@@ -87,26 +131,17 @@ def run_pipeline():
             
             optimal_naive = find_optimal_threshold(
                 y_true=y_true, y_scores=naive_scores, thresholds=naive_thresholds,
-                amounts=amounts, fn_multiplier=1.15, fp_multiplier=0.02
+                amounts=amounts, fn_multiplier=fn_mult, fp_multiplier=fp_mult
             )
             
             # --- Tiered Action Policy ---
             from backend.cost_model import find_optimal_threshold_pair
             optimal_tiered = find_optimal_threshold_pair(
                 y_true=y_true, y_scores=y_scores, thresholds=thresholds,
-                amounts=amounts, fn_multiplier=1.15, fp_multiplier=0.02, cost_per_review=50.0
+                amounts=amounts, fn_multiplier=fn_mult, fp_multiplier=fp_mult, cost_per_review=review_cost
             )
             
             # --- Per-Segment ---
-            merchant_vols = df.groupby('merchant_id').size()
-            q33, q67 = merchant_vols.quantile([0.33, 0.67])
-            def get_tier(vol):
-                if vol <= q33: return "Low Volume"
-                if vol <= q67: return "Medium Volume"
-                return "High Volume"
-            
-            df['merchant_tier'] = df['merchant_id'].map(merchant_vols.apply(get_tier))
-            
             segments_data = {}
             for tier in ["Low Volume", "Medium Volume", "High Volume"]:
                 t_df = df[df['merchant_tier'] == tier]
@@ -117,9 +152,9 @@ def run_pipeline():
                 tif_scores = t_df[t_df['model_score'] > -10.0]['model_score']
                 if not tif_scores.empty:
                     t_thresh = np.linspace(float(tif_scores.min()) - 0.1, float(tif_scores.max()) + 0.1, 50).tolist()
-                    t_curve = evaluate_threshold_costs(ty_true, ty_scores, t_thresh, tamounts, 1.15, 0.02)
-                    t_opt = find_optimal_threshold(ty_true, ty_scores, t_thresh, tamounts, 1.15, 0.02)
-                    t_opt_tiered = find_optimal_threshold_pair(ty_true, ty_scores, t_thresh, tamounts, 1.15, 0.02, 50.0)
+                    t_curve = evaluate_threshold_costs(ty_true, ty_scores, t_thresh, tamounts, fn_mult, fp_mult)
+                    t_opt = find_optimal_threshold(ty_true, ty_scores, t_thresh, tamounts, fn_mult, fp_mult)
+                    t_opt_tiered = find_optimal_threshold_pair(ty_true, ty_scores, t_thresh, tamounts, fn_mult, fp_mult, review_cost)
                     segments_data[tier] = {
                         "curve": t_curve,
                         "optimal": t_opt,
@@ -189,6 +224,9 @@ class MerchantSummary(BaseModel):
     flagged_windows: int
     status: str
     last_flag: Optional[str] = None
+    is_new: bool = False
+    tier: str = "Unknown"
+    blend_progress: float = 1.0
 
 @app.get("/merchants", response_model=List[MerchantSummary])
 async def get_merchants():
@@ -210,12 +248,24 @@ async def get_merchants():
         if flag_count > 0:
             last_flag = max(fw['timestamp'] for fw in res.flagged_windows).isoformat()
             
+        tier = m_df['merchant_tier'].iloc[0] if 'merchant_tier' in m_df.columns else "Unknown"
+        
+        # Calculate blend progress
+        from backend.detector import DetectionConfig
+        config = DetectionConfig()
+        hours_active = len(m_df.set_index('timestamp').resample('1h'))
+        blend_progress = min(1.0, hours_active / config.cold_start_threshold)
+        is_new = blend_progress < 1.0
+            
         summaries.append(MerchantSummary(
             merchant_id=merchant_id,
             total_transactions=len(m_df),
             flagged_windows=flag_count,
             status=status,
-            last_flag=last_flag
+            last_flag=last_flag,
+            is_new=is_new,
+            tier=tier,
+            blend_progress=blend_progress
         ))
     return summaries
 
@@ -242,9 +292,20 @@ async def get_merchant_timeline(merchant_id: str):
     res = state.merchant_results[merchant_id]
     windows = [{"timestamp": fw["timestamp"].isoformat(), "signal": fw["signal"], "detector": fw["detector"]} for fw in res.flagged_windows]
     
+    raw_m_df = state.df[state.df['merchant_id'] == merchant_id]
+    tier = raw_m_df['merchant_tier'].iloc[0] if 'merchant_tier' in raw_m_df.columns else "Unknown"
+    from backend.detector import DetectionConfig
+    config = DetectionConfig()
+    hours_active = len(df)
+    blend_progress = min(1.0, hours_active / config.cold_start_threshold)
+    is_new = blend_progress < 1.0
+    
     return {
         "timeline": timeline,
-        "flagged_windows": windows
+        "flagged_windows": windows,
+        "is_new": is_new,
+        "tier": tier,
+        "blend_progress": blend_progress
     }
 
 @app.get("/merchants/{merchant_id}/flags")

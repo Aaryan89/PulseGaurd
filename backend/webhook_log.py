@@ -6,9 +6,11 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("WebhookStub")
 
+import os
+
 class WebhookConfig:
-    enabled: bool = True
-    url: str = "http://localhost:8000/internal/webhook-stub" # Configurable URL
+    enabled: bool = os.getenv("WEBHOOK_ENABLED", "true").lower() == "true"
+    url: str = os.getenv("WEBHOOK_URL", "http://localhost:8000/internal/webhook-stub")
 
 class WebhookManager:
     def __init__(self):

@@ -11,7 +11,7 @@ export const CostDashboard = () => {
   const EXCHANGE_RATE = 1 / 83.0; // Fixed illustrative rate: 1 INR = ~0.012 USD
 
   useEffect(() => {
-    axios.get('http://localhost:8000/cost-curve').then(res => setData(res.data));
+    axios.get('/api/cost-curve').then(res => setData(res.data));
   }, []);
 
   if (!data || !data.curve) return <div className="p-8">Loading Cost Data...</div>;

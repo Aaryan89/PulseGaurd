@@ -37,6 +37,11 @@ class DetectionConfig:
     cat_features: List[str] = field(default_factory=lambda: ['payment_method', 'location'])
     rolling_rebaseline: bool = False
     rolling_rebaseline_window: int = 168 # 1 week of hours
+    
+    # Cold Start Configuration
+    cold_start_threshold: int = 48 # Number of periods (e.g. hours) before merchant fully owns baseline
+    cold_start_blend_rate: float = 1.0 # Exponent for blending: 1.0 is linear, <1.0 blends faster
+    tier_priors: Dict[str, Dict[str, float]] = field(default_factory=dict) # Prior mean/std by signal
 
 @dataclass
 class DetectionResult:
@@ -85,18 +90,48 @@ def detect(merchant_transactions_df: pd.DataFrame, config: DetectionConfig = Non
         if len(series) < 2:
             continue
             
-        if config.rolling_rebaseline:
-            mean = series.rolling(window=config.rolling_rebaseline_window, min_periods=config.burn_in_periods).mean()
-            std = series.rolling(window=config.rolling_rebaseline_window, min_periods=config.burn_in_periods).std().fillna(0)
-        else:
-            hist_mean = series.iloc[:config.burn_in_periods].mean()
-            hist_std = series.iloc[:config.burn_in_periods].std()
-            if pd.isna(hist_std) or hist_std == 0:
-                hist_std = 1.0
-                
-            mean = pd.Series(hist_mean, index=series.index)
-            std = pd.Series(hist_std, index=series.index)
+        mean_arr = np.zeros(len(series))
+        std_arr = np.zeros(len(series))
+        
+        prior_mean = config.tier_priors.get(signal, {}).get('mean', 0.0) if config.tier_priors else 0.0
+        prior_std = config.tier_priors.get(signal, {}).get('std', 1.0) if config.tier_priors else 1.0
+        
+        for i in range(len(series)):
+            hist = series.iloc[:i]
+            n = len(hist)
             
+            if n < 2:
+                own_mean, own_std = 0.0, 1.0
+            else:
+                if config.rolling_rebaseline and n > config.rolling_rebaseline_window:
+                    own_mean = hist.iloc[-config.rolling_rebaseline_window:].mean()
+                    own_std = hist.iloc[-config.rolling_rebaseline_window:].std()
+                else:
+                    own_mean = hist.mean()
+                    own_std = hist.std()
+                    
+            if pd.isna(own_std) or own_std == 0:
+                own_std = 1.0
+                
+            if n >= config.cold_start_threshold:
+                alpha = 1.0
+            else:
+                alpha = (n / config.cold_start_threshold) ** config.cold_start_blend_rate
+                
+            if config.tier_priors and signal in config.tier_priors:
+                mean_arr[i] = alpha * own_mean + (1 - alpha) * prior_mean
+                std_arr[i] = alpha * own_std + (1 - alpha) * prior_std
+            else:
+                if n < 2:
+                    mean_arr[i] = series.iloc[i]
+                    std_arr[i] = 1.0
+                else:
+                    mean_arr[i] = own_mean
+                    std_arr[i] = own_std
+                    
+        mean = pd.Series(mean_arr, index=series.index)
+        std = pd.Series(std_arr, index=series.index)
+        
         upper_limit = mean + config.ewma_control_limit_std * std
         lower_limit = mean - config.ewma_control_limit_std * std
         
@@ -114,7 +149,8 @@ def detect(merchant_transactions_df: pd.DataFrame, config: DetectionConfig = Non
         cusum_pos_breach = cusum_pos > config.cusum_threshold
         cusum_neg_breach = cusum_neg > config.cusum_threshold
         
-        for i in range(config.burn_in_periods, len(series)):
+        start_idx = 0 if (config.tier_priors and signal in config.tier_priors) else config.burn_in_periods
+        for i in range(start_idx, len(series)):
             ts = agg_df.index[i]
             val = series.iloc[i]
             if pd.isna(upper_limit.iloc[i]):

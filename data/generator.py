@@ -117,7 +117,12 @@ def generate_dataset(num_merchants: int = 10, days: int = 30) -> pd.DataFrame:
     tiers = ['small', 'medium', 'large']
     for i in range(num_merchants):
         tier = np.random.choice(tiers, p=[0.7, 0.2, 0.1])
-        merchants.append(MerchantSimulator(f"M_{i+1:03d}", tier))
+        m = MerchantSimulator(f"M_{i+1:03d}", tier)
+        # Make the last merchant a cold-start example
+        if i == num_merchants - 1:
+            m.is_new_merchant = True
+            m.merchant_id = f"{m.merchant_id}_NEW"
+        merchants.append(m)
         
     start_date = datetime.now() - timedelta(days=days)
     all_transactions = []
@@ -135,6 +140,11 @@ def generate_dataset(num_merchants: int = 10, days: int = 30) -> pd.DataFrame:
         current_time = start_date + timedelta(hours=hour_offset)
         
         for m in merchants:
+            # If it's the cold start merchant, skip generating data until the last 1.5 days (36 hours)
+            if hasattr(m, 'is_new_merchant') and m.is_new_merchant:
+                if hour_offset < total_hours - 36:
+                    continue
+                    
             if hour_offset in anomaly_schedule[m.merchant_id]:
                 anomaly_type = anomaly_schedule[m.merchant_id][hour_offset]
                 txns = m.generate_anomaly_hour(current_time, anomaly_type)

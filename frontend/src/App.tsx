@@ -44,7 +44,7 @@ const MerchantList = () => {
 
   useEffect(() => {
     axios
-      .get("http://localhost:8000/merchants")
+      .get("/api/merchants")
       .then((res) => setMerchants(res.data));
   }, []);
 
@@ -55,7 +55,7 @@ const MerchantList = () => {
         <button
           onClick={() => {
             axios
-              .post("http://localhost:8000/refresh")
+              .post("/api/refresh")
               .then(() =>
                 alert(
                   "Pipeline refreshing in background. Reload page in a few seconds.",
@@ -86,7 +86,14 @@ const MerchantList = () => {
                 className="border-b border-gray-100 hover:bg-gray-50"
               >
                 <td className="p-4 text-blue-600 font-medium">
-                  <Link to={`/merchant/${m.merchant_id}`}>{m.merchant_id}</Link>
+                  <div className="flex items-center space-x-2">
+                    <Link to={`/merchant/${m.merchant_id}`}>{m.merchant_id}</Link>
+                    {m.is_new && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 uppercase">
+                        Cold Start
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="p-4">
                   {m.status === "normal" && (
@@ -126,7 +133,7 @@ const RecentActions = () => {
 
   useEffect(() => {
     axios
-      .get("http://localhost:8000/webhooks/recent")
+      .get("/api/webhooks/recent")
       .then((res) => setActions(res.data));
     // Optional: could poll every few seconds, but since refresh is manual, once on load is fine.
   }, []);
@@ -185,10 +192,10 @@ const MerchantDetail = () => {
 
   useEffect(() => {
     axios
-      .get(`http://localhost:8000/merchants/${id}/timeline`)
+      .get(`/api/merchants/${id}/timeline`)
       .then((res) => setTimeline(res.data));
     axios
-      .get(`http://localhost:8000/merchants/${id}/flags`)
+      .get(`/api/merchants/${id}/flags`)
       .then((res) => setFlags(res.data));
   }, [id]);
 
@@ -203,7 +210,20 @@ const MerchantDetail = () => {
         >
           &larr; Back to Overview
         </Link>
-        <h1 className="text-3xl font-bold">{id} Risk Detail</h1>
+        <div className="flex items-center space-x-4 mb-2">
+          <h1 className="text-3xl font-bold">{id} Risk Detail</h1>
+          {timeline.is_new && (
+            <div className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium flex items-center shadow-sm">
+              <span className="mr-2">Cold Start Mode ({timeline.tier} Prior)</span>
+              <div className="w-16 h-2 bg-purple-200 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-purple-600" 
+                  style={{ width: `${Math.max(5, timeline.blend_progress * 100)}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
