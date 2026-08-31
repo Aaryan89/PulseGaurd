@@ -10,10 +10,10 @@ def test_ewma_cusum_flat_vs_spike():
     flat_data = []
     for i in range(100):
         flat_data.append({
-            "timestamp": start_time + timedelta(hours=i),
-            "transaction_id": f"tx_{i}",
+            "created_at": start_time + timedelta(hours=i),
+            "id": f"tx_{i}",
             "amount": 100.0,
-            "payment_method": "card",
+            "method": "card",
             "location": "US"
         })
         
@@ -27,10 +27,10 @@ def test_ewma_cusum_flat_vs_spike():
     # Add a huge volume spike at hour 50
     for i in range(100):
         spike_data.append({
-            "timestamp": start_time + timedelta(hours=50, minutes=i%60),
-            "transaction_id": f"tx_spike_{i}",
+            "created_at": start_time + timedelta(hours=50, minutes=i%60),
+            "id": f"tx_spike_{i}",
             "amount": 100.0,
-            "payment_method": "card",
+            "method": "card",
             "location": "US"
         })
         
@@ -49,10 +49,10 @@ def test_cold_start_onboarding():
     data = []
     for i in range(10):
         data.append({
-            "timestamp": start_time + timedelta(hours=i//2), # 2 txns per hour
-            "transaction_id": f"tx_{i}",
+            "created_at": start_time + timedelta(hours=i//2), # 2 txns per hour
+            "id": f"tx_{i}",
             "amount": 100.0,
-            "payment_method": "card",
+            "method": "card",
             "location": "US"
         })
     df = pd.DataFrame(data)

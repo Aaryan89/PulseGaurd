@@ -1,9 +1,10 @@
 def format_currency(amount: float, currency_code: str = 'INR') -> str:
     """
-    Format a float amount into a currency string.
+    Format an integer amount (in smallest currency unit, e.g. paise) into a currency string.
     Supports INR with Indian digit grouping (e.g. ₹1,00,000.00)
     and USD with standard grouping (e.g. $100,000.00).
     """
+    amount = amount / 100.0  # Convert paise/cents to major unit
     is_negative = amount < 0
     amount = abs(amount)
     

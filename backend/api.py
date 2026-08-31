@@ -2,11 +2,14 @@ import os
 import sys
 import pandas as pd
 import numpy as np
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, Request, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import hmac
+import hashlib
+import json
 
 # Local imports
 from data.generator import generate_dataset
@@ -29,6 +32,8 @@ class AppState:
     cost_data: Dict[str, Any] = {}
     last_updated: datetime = None
     is_refreshing: bool = False
+    ground_truth_labels: List[Dict[str, Any]] = []
+    recalibration_report: Optional[Dict[str, Any]] = None
 
 state = AppState()
 
@@ -37,7 +42,10 @@ def run_pipeline():
     try:
         # 1. Generate Data
         df = generate_dataset(num_merchants=5, days=15) # Smaller dataset for faster refresh during pitch
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df['created_at'] = pd.to_datetime(df['created_at'], unit='s')
+        
+        # Extract merchant_id and tier from notes
+        df['merchant_id'] = df['notes'].apply(lambda x: x.get('merchant_id'))
         
         # --- Tier Assignment & Priors ---
         merchant_vols = df.groupby('merchant_id').size()
@@ -58,11 +66,11 @@ def run_pipeline():
             if tier_df.empty:
                 continue
                 
-            tier_df['time_diff'] = tier_df.groupby('merchant_id')['timestamp'].diff().dt.total_seconds().fillna(0)
+            tier_df['time_diff'] = tier_df.groupby('merchant_id')['created_at'].diff().dt.total_seconds().fillna(0)
             
             # Aggregate by hour across all merchants in tier
-            t_agg = tier_df.set_index('timestamp').resample('1h').agg(
-                volume=('transaction_id', 'count'),
+            t_agg = tier_df.set_index('created_at').resample('1h').agg(
+                volume=('id', 'count'),
                 ticket_size=('amount', 'mean'),
                 velocity=('time_diff', 'mean')
             ).fillna(0)
@@ -89,10 +97,10 @@ def run_pipeline():
             res = detect(m_df, config)
             merchant_results[merchant_id] = res
             
-            score_dict = {ft['transaction_id']: ft['score'] for ft in res.flagged_transactions}
+            score_dict = {ft['id']: ft['score'] for ft in res.flagged_transactions}
             if score_dict:
                 mask = df['merchant_id'] == merchant_id
-                df.loc[mask, 'model_score'] = df.loc[mask, 'transaction_id'].map(score_dict).fillna(-10.0)
+                df.loc[mask, 'model_score'] = df.loc[mask, 'id'].map(score_dict).fillna(-10.0)
                 
         # 3. Cost Model
         y_true = df['is_anomaly'].astype(int).tolist()
@@ -107,7 +115,7 @@ def run_pipeline():
             # Get cost defaults from env
             fn_mult = float(os.getenv("COST_FN_MULTIPLIER", "1.15"))
             fp_mult = float(os.getenv("COST_FP_MULTIPLIER", "0.02"))
-            review_cost = float(os.getenv("COST_PER_REVIEW", "50.0"))
+            review_cost = float(os.getenv("COST_PER_REVIEW", "5000.0"))
             
             optimal = find_optimal_threshold(
                 y_true=y_true, y_scores=y_scores, thresholds=thresholds, 
@@ -192,7 +200,7 @@ def run_pipeline():
                         continue
                         
                     webhook_manager.fire_webhook({
-                        "transaction_id": txn['transaction_id'],
+                        "id": txn['id'],
                         "merchant_id": m_id,
                         "tier": tier,
                         "anomaly_score": round(score, 3),
@@ -246,14 +254,14 @@ async def get_merchants():
             
         last_flag = None
         if flag_count > 0:
-            last_flag = max(fw['timestamp'] for fw in res.flagged_windows).isoformat()
+            last_flag = max(fw['created_at'] for fw in res.flagged_windows).isoformat()
             
         tier = m_df['merchant_tier'].iloc[0] if 'merchant_tier' in m_df.columns else "Unknown"
         
         # Calculate blend progress
         from backend.detector import DetectionConfig
         config = DetectionConfig()
-        hours_active = len(m_df.set_index('timestamp').resample('1h'))
+        hours_active = len(m_df.set_index('created_at').resample('1h'))
         blend_progress = min(1.0, hours_active / config.cold_start_threshold)
         is_new = blend_progress < 1.0
             
@@ -275,8 +283,8 @@ async def get_merchant_timeline(merchant_id: str):
         return {}
         
     df = state.df[state.df['merchant_id'] == merchant_id].copy()
-    df = df.set_index('timestamp').resample('1h').agg(
-        volume=('transaction_id', 'count'),
+    df = df.set_index('created_at').resample('1h').agg(
+        volume=('id', 'count'),
         ticket_size=('amount', 'mean'),
     ).fillna(0)
     
@@ -284,13 +292,13 @@ async def get_merchant_timeline(merchant_id: str):
     timeline = []
     for ts, row in df.iterrows():
         timeline.append({
-            "timestamp": ts.isoformat(),
+            "created_at": ts.isoformat(),
             "volume": float(row['volume']),
             "ticket_size": float(row['ticket_size'])
         })
         
     res = state.merchant_results[merchant_id]
-    windows = [{"timestamp": fw["timestamp"].isoformat(), "signal": fw["signal"], "detector": fw["detector"]} for fw in res.flagged_windows]
+    windows = [{"created_at": fw["created_at"].isoformat(), "signal": fw["signal"], "detector": fw["detector"]} for fw in res.flagged_windows]
     
     raw_m_df = state.df[state.df['merchant_id'] == merchant_id]
     tier = raw_m_df['merchant_tier'].iloc[0] if 'merchant_tier' in raw_m_df.columns else "Unknown"
@@ -407,3 +415,77 @@ async def get_cost_curve(fn_multiplier: float = None, fp_multiplier: float = Non
     new_cost_data["segments"] = segments_data
     
     return new_cost_data
+    
+@app.post("/webhooks/razorpay")
+async def razorpay_webhook(request: Request, x_razorpay_signature: str = Header(None)):
+    """
+    Genuine Razorpay webhook receiver.
+    PulseGuard can consume Razorpay's own dispute webhooks as real, delayed ground truth, 
+    closing the loop between the delayed-label problem we identified and the cost model's assumptions — 
+    this is a genuine integration point, not a simulated one.
+    
+    Signature verification is critical: without this, anyone could POST a fake payload 
+    to the endpoint and trigger false actions.
+    """
+    if not os.getenv("ENABLE_REAL_WEBHOOKS", "false").lower() == "true":
+        return {"status": "ignored", "reason": "real webhooks disabled by config"}
+        
+    secret = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
+    if not secret:
+        raise HTTPException(status_code=500, detail="Webhook secret not configured")
+        
+    body = await request.body()
+    
+    # Verify signature
+    if not x_razorpay_signature:
+        raise HTTPException(status_code=400, detail="Missing signature")
+        
+    expected_signature = hmac.new(
+        key=secret.encode(),
+        msg=body,
+        digestmod=hashlib.sha256
+    ).hexdigest()
+    
+    if not hmac.compare_digest(expected_signature, x_razorpay_signature):
+        raise HTTPException(status_code=400, detail="Invalid signature")
+        
+    try:
+        payload = json.loads(body)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+        
+    event = payload.get("event")
+    
+    if event == "payment.dispute.created":
+        # Handle ground truth delayed label
+        payment_id = payload.get("payload", {}).get("payment", {}).get("entity", {}).get("id")
+        amount = payload.get("payload", {}).get("payment", {}).get("entity", {}).get("amount", 0)
+        
+        state.ground_truth_labels.append({
+            "payment_id": payment_id,
+            "timestamp": datetime.now(),
+            "amount": amount
+        })
+        
+        # Build recalibration report
+        fn_mult = float(os.getenv("COST_FN_MULTIPLIER", "1.15"))
+        missed_cost = amount * fn_mult
+        
+        total_missed = sum(lbl["amount"] for lbl in state.ground_truth_labels) * fn_mult
+        
+        state.recalibration_report = {
+            "new_confirmed_frauds": len(state.ground_truth_labels),
+            "total_delayed_cost_impact": total_missed,
+            "message": f"Incorporating this dispute adds {missed_cost} to the false negative cost penalty. If the model had caught this, it would have saved the merchant from the chargeback."
+        }
+        
+    return {"status": "ok"}
+
+@app.get("/recalibration-report")
+async def get_recalibration_report():
+    return state.recalibration_report or {
+        "new_confirmed_frauds": 0, 
+        "total_delayed_cost_impact": 0.0, 
+        "message": "No new disputes received yet. Webhook receiver is listening."
+    }
+

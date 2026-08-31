@@ -37,13 +37,17 @@ export const CostDashboard = () => {
   ];
 
   const formatAmount = (val: number) => {
-    const converted = currency === 'USD' ? val * EXCHANGE_RATE : val;
+    const majorUnit = val / 100.0;
+    const converted = currency === 'USD' ? majorUnit * EXCHANGE_RATE : majorUnit;
     return formatCurrency(converted, currency);
   };
   
   const formatCompactAmount = (val: number) => {
-    const converted = currency === 'USD' ? val * EXCHANGE_RATE : val;
-    if (converted >= 100000) {
+    const majorUnit = val / 100.0;
+    const converted = currency === 'USD' ? majorUnit * EXCHANGE_RATE : majorUnit;
+    if (converted >= 10000000) {
+      return (converted / 10000000).toFixed(1) + 'Cr';
+    } else if (converted >= 100000) {
       return (converted / 100000).toFixed(1) + 'L';
     } else if (converted >= 1000) {
       return (converted / 1000).toFixed(0) + 'k';
@@ -189,7 +193,7 @@ export const CostDashboard = () => {
                   </XAxis>
                   <YAxis 
                     tickFormatter={(val) => (currency === 'INR' ? '₹' : '$') + formatCompactAmount(val)} 
-                    width={80}
+                    width={95}
                     tick={{fill: '#94A3B8', fontSize: 12, fontFamily: 'JetBrains Mono'}}
                     stroke="#94A3B8"
                   />

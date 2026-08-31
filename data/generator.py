@@ -19,19 +19,19 @@ class MerchantSimulator:
             self.base_lambda = 5  # average txns per hour
             self.mu_log = 6.2     # log mean of amount (~₹490)
             self.sigma_log = 0.8  # variance of amount
-            self.payment_mix = {'credit_card': 0.4, 'debit_card': 0.3, 'upi': 0.3}
+            self.payment_mix = {'card': 0.4, 'upi': 0.6}
             self.geo_mix = {'domestic': 0.95, 'international': 0.05}
         elif tier == 'medium':
             self.base_lambda = 40
             self.mu_log = 7.3     # log mean (~₹1480)
             self.sigma_log = 1.0
-            self.payment_mix = {'credit_card': 0.6, 'debit_card': 0.2, 'upi': 0.2}
+            self.payment_mix = {'card': 0.6, 'upi': 0.3, 'wallet': 0.1}
             self.geo_mix = {'domestic': 0.85, 'international': 0.15}
         else: # large
             self.base_lambda = 200
             self.mu_log = 8.0     # log mean (~₹2980)
             self.sigma_log = 1.2
-            self.payment_mix = {'credit_card': 0.7, 'debit_card': 0.1, 'upi': 0.1, 'netbanking': 0.1}
+            self.payment_mix = {'card': 0.6, 'upi': 0.2, 'netbanking': 0.1, 'emi': 0.1}
             self.geo_mix = {'domestic': 0.70, 'international': 0.30}
 
     def generate_baseline_hour(self, timestamp: datetime) -> List[Dict[str, Any]]:
@@ -60,12 +60,20 @@ class MerchantSimulator:
             burst_txns = []
             for _ in range(burst_size):
                 burst_txns.append({
-                    'transaction_id': f"tx_{random.randint(10000000, 99999999)}",
-                    'merchant_id': self.merchant_id,
-                    'timestamp': timestamp + timedelta(minutes=random.uniform(0, 59), seconds=random.uniform(0, 59)),
-                    'amount': round(random.uniform(50.0, 150.0), 2), # Card testing amounts in INR (₹50 - ₹150)
-                    'payment_method': 'credit_card',
-                    'location': 'international', # Often cross-border
+                    'id': f"pay_{random.randint(10000000, 99999999)}",
+                    'entity': 'payment',
+                    'amount': int(round(random.uniform(50.0, 150.0) * 100)), # Card testing amounts in INR
+                    'currency': 'INR',
+                    'status': 'failed', # usually card testing fails
+                    'method': 'card',
+                    'email': f"customer_{random.randint(1000, 9999)}@example.com",
+                    'contact': f"+91{random.randint(6000000000, 9999999999)}",
+                    'notes': {
+                        'merchant_id': self.merchant_id,
+                        'merchant_tier': self.tier,
+                        'location': 'international'
+                    },
+                    'created_at': int((timestamp + timedelta(minutes=random.uniform(0, 59), seconds=random.uniform(0, 59))).timestamp()),
                     'is_anomaly': True,
                     'anomaly_type': 'card_testing'
                 })
@@ -77,12 +85,20 @@ class MerchantSimulator:
             txns = []
             for _ in range(n_txns):
                 txns.append({
-                    'transaction_id': f"tx_{random.randint(10000000, 99999999)}",
-                    'merchant_id': self.merchant_id,
-                    'timestamp': timestamp + timedelta(minutes=random.uniform(0, 59), seconds=random.uniform(0, 59)),
-                    'amount': round(np.random.lognormal(self.mu_log, self.sigma_log), 2),
-                    'payment_method': np.random.choice(list(self.payment_mix.keys()), p=list(self.payment_mix.values())),
-                    'location': 'international', # Forced shift
+                    'id': f"pay_{random.randint(10000000, 99999999)}",
+                    'entity': 'payment',
+                    'amount': int(round(np.random.lognormal(self.mu_log, self.sigma_log) * 100)),
+                    'currency': 'INR',
+                    'status': 'captured',
+                    'method': np.random.choice(list(self.payment_mix.keys()), p=list(self.payment_mix.values())),
+                    'email': f"customer_{random.randint(1000, 9999)}@example.com",
+                    'contact': f"+91{random.randint(6000000000, 9999999999)}",
+                    'notes': {
+                        'merchant_id': self.merchant_id,
+                        'merchant_tier': self.tier,
+                        'location': 'international'
+                    },
+                    'created_at': int((timestamp + timedelta(minutes=random.uniform(0, 59), seconds=random.uniform(0, 59))).timestamp()),
                     'is_anomaly': True,
                     'anomaly_type': 'geo_shift'
                 })
@@ -94,12 +110,20 @@ class MerchantSimulator:
         txns = []
         for _ in range(n_txns):
             txns.append({
-                'transaction_id': f"tx_{random.randint(10000000, 99999999)}",
-                'merchant_id': self.merchant_id,
-                'timestamp': base_time + timedelta(minutes=random.uniform(0, 59), seconds=random.uniform(0, 59)),
-                'amount': round(np.random.lognormal(self.mu_log, self.sigma_log), 2),
-                'payment_method': np.random.choice(list(self.payment_mix.keys()), p=list(self.payment_mix.values())),
-                'location': np.random.choice(list(self.geo_mix.keys()), p=list(self.geo_mix.values())),
+                'id': f"pay_{random.randint(10000000, 99999999)}",
+                'entity': 'payment',
+                'amount': int(round(np.random.lognormal(self.mu_log, self.sigma_log) * 100)),
+                'currency': 'INR',
+                'status': np.random.choice(['captured', 'failed', 'authorized'], p=[0.85, 0.10, 0.05]),
+                'method': np.random.choice(list(self.payment_mix.keys()), p=list(self.payment_mix.values())),
+                'email': f"customer_{random.randint(1000, 9999)}@example.com",
+                'contact': f"+91{random.randint(6000000000, 9999999999)}",
+                'notes': {
+                    'merchant_id': self.merchant_id,
+                    'merchant_tier': self.tier,
+                    'location': np.random.choice(list(self.geo_mix.keys()), p=list(self.geo_mix.values()))
+                },
+                'created_at': int((base_time + timedelta(minutes=random.uniform(0, 59), seconds=random.uniform(0, 59))).timestamp()),
                 'is_anomaly': is_anomaly,
                 'anomaly_type': anomaly_type
             })
@@ -154,7 +178,7 @@ def generate_dataset(num_merchants: int = 10, days: int = 30) -> pd.DataFrame:
             all_transactions.extend(txns)
             
     df = pd.DataFrame(all_transactions)
-    df = df.sort_values(by='timestamp').reset_index(drop=True)
+    df = df.sort_values(by='created_at').reset_index(drop=True)
     return df
 
 if __name__ == "__main__":

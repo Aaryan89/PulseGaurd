@@ -34,7 +34,7 @@ class DetectionConfig:
     iforest_random_state: int = 42
     burn_in_periods: int = 24
     num_features: List[str] = field(default_factory=lambda: ['amount', 'hour_of_day', 'day_of_week'])
-    cat_features: List[str] = field(default_factory=lambda: ['payment_method', 'location'])
+    cat_features: List[str] = field(default_factory=lambda: ['method'])
     rolling_rebaseline: bool = False
     rolling_rebaseline_window: int = 168 # 1 week of hours
     
@@ -64,17 +64,17 @@ def detect(merchant_transactions_df: pd.DataFrame, config: DetectionConfig = Non
         config = DetectionConfig()
         
     df = merchant_transactions_df.copy()
-    if not np.issubdtype(df['timestamp'].dtype, np.datetime64):
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+    if not np.issubdtype(df['created_at'].dtype, np.datetime64):
+        df['created_at'] = pd.to_datetime(df['created_at'], unit='s') if pd.api.types.is_numeric_dtype(df['created_at']) else pd.to_datetime(df['created_at'])
     
-    df = df.sort_values('timestamp')
+    df = df.sort_values('created_at')
     if df.empty:
         return DetectionResult()
         
-    df['time_diff'] = df['timestamp'].diff().dt.total_seconds().fillna(0)
+    df['time_diff'] = df['created_at'].diff().dt.total_seconds().fillna(0)
     
-    agg_df = df.set_index('timestamp').resample(config.window_freq).agg(
-        volume=('transaction_id', 'count'),
+    agg_df = df.set_index('created_at').resample(config.window_freq).agg(
+        volume=('id', 'count'),
         ticket_size=('amount', 'mean'),
         velocity=('time_diff', 'mean')
     )
@@ -158,33 +158,33 @@ def detect(merchant_transactions_df: pd.DataFrame, config: DetectionConfig = Non
             
             if ewma_upper_breach.iloc[i]:
                 margin = val - upper_limit.iloc[i]
-                flagged_windows.append({"timestamp": ts, "signal": signal, "detector": "EWMA High", "margin": margin})
+                flagged_windows.append({"created_at": ts, "signal": signal, "detector": "EWMA High", "margin": margin})
                 audit_log.append(f"EWMA breach: {signal} value of {val:.2f} exceeded upper limit of {upper_limit.iloc[i]:.2f} by {margin:.2f} at {ts}")
                 
             if ewma_lower_breach.iloc[i]:
                 margin = lower_limit.iloc[i] - val
-                flagged_windows.append({"timestamp": ts, "signal": signal, "detector": "EWMA Low", "margin": margin})
+                flagged_windows.append({"created_at": ts, "signal": signal, "detector": "EWMA Low", "margin": margin})
                 audit_log.append(f"EWMA breach: {signal} value of {val:.2f} fell below lower limit of {lower_limit.iloc[i]:.2f} by {margin:.2f} at {ts}")
                 
             if cusum_pos_breach[i]:
                 margin = cusum_pos[i] - config.cusum_threshold
-                flagged_windows.append({"timestamp": ts, "signal": signal, "detector": "CUSUM High", "margin": margin})
+                flagged_windows.append({"created_at": ts, "signal": signal, "detector": "CUSUM High", "margin": margin})
                 audit_log.append(f"CUSUM breach: {signal} cumulative positive deviation of {cusum_pos[i]:.2f} exceeded threshold of {config.cusum_threshold} at {ts}")
                 
             if cusum_neg_breach[i]:
                 margin = cusum_neg[i] - config.cusum_threshold
-                flagged_windows.append({"timestamp": ts, "signal": signal, "detector": "CUSUM Low", "margin": margin})
+                flagged_windows.append({"created_at": ts, "signal": signal, "detector": "CUSUM Low", "margin": margin})
                 audit_log.append(f"CUSUM breach: {signal} cumulative negative deviation of {cusum_neg[i]:.2f} exceeded threshold of {config.cusum_threshold} at {ts}")
 
-    flagged_timestamps = set(fw['timestamp'] for fw in flagged_windows)
+    flagged_timestamps = set(fw['created_at'] for fw in flagged_windows)
     
     flagged_transactions = []
     
     if flagged_timestamps and len(df) > 20:
         if 'hour_of_day' in config.num_features and 'hour_of_day' not in df.columns:
-            df['hour_of_day'] = df['timestamp'].dt.hour
+            df['hour_of_day'] = df['created_at'].dt.hour
         if 'day_of_week' in config.num_features and 'day_of_week' not in df.columns:
-            df['day_of_week'] = df['timestamp'].dt.dayofweek
+            df['day_of_week'] = df['created_at'].dt.dayofweek
             
         features = config.num_features + config.cat_features
         
@@ -192,7 +192,7 @@ def detect(merchant_transactions_df: pd.DataFrame, config: DetectionConfig = Non
         for ts in flagged_timestamps:
             window_start = ts
             window_end = ts + pd.Timedelta(config.window_freq)
-            unflagged_mask &= ~((df['timestamp'] >= window_start) & (df['timestamp'] < window_end))
+            unflagged_mask &= ~((df['created_at'] >= window_start) & (df['created_at'] < window_end))
             
         baseline_df = df[unflagged_mask]
         
@@ -258,9 +258,9 @@ def detect(merchant_transactions_df: pd.DataFrame, config: DetectionConfig = Non
                     reason = f"Isolation forest anomaly score {score:.2f}. Primary drivers: {driver_str}."
                     
                     flagged_transactions.append({
-                        'transaction_id': txn['transaction_id'],
+                        'id': txn['id'],
                         'score': score,
-                        'window': txn['timestamp'].floor(config.window_freq),
+                        'window': txn['created_at'].floor(config.window_freq),
                         'reason': reason
                     })
                     

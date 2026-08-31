@@ -163,7 +163,7 @@ const RecentActions = () => {
                 >
                   {action.tier.toUpperCase()}
                 </span>
-                <span className="text-pg-text">{action.transaction_id}</span>
+                <span className="text-pg-text">{action.id}</span>
                 <span className="text-pg-muted">({action.merchant_id})</span>
               </div>
               <p className="text-xs text-pg-muted font-sans mt-2">{action.reason}</p>
@@ -223,15 +223,19 @@ const MerchantDetail = () => {
 
   if (!timeline || !flags) return <div className="p-8">Loading...</div>;
 
-  const fullTimeline = timeline.timeline;
-  const effectiveIndex = currentTimeIndex === -1 ? fullTimeline.length - 1 : currentTimeIndex;
-  const currentTimestampStr = fullTimeline[effectiveIndex]?.timestamp;
-  const currentTimestamp = new Date(currentTimestampStr).getTime();
+    // We'll just return the series data for the frontend to chart
+    const fullTimeline = timeline.timeline;
+    const effectiveIndex = currentTimeIndex === -1 ? fullTimeline.length - 1 : currentTimeIndex;
+    const currentTimestampStr = fullTimeline[effectiveIndex]?.created_at;
+    const currentTimestamp = new Date(currentTimestampStr).getTime();
 
-  // Filter Data based on Replay Time
-  const displayTimeline = fullTimeline.slice(0, effectiveIndex + 1);
+    // Filter Data based on Replay Time
+    const displayTimeline = fullTimeline.slice(0, effectiveIndex + 1).map((point: any) => ({
+      ...point,
+      ticket_size: point.ticket_size / 100.0
+    }));
   const displayWindows = timeline.flagged_windows.filter(
-    (fw: any) => new Date(fw.timestamp).getTime() <= currentTimestamp
+    (fw: any) => new Date(fw.created_at).getTime() <= currentTimestamp
   );
   const displayAuditLog = flags.audit_log.filter((log: string) => {
     const match = log.match(/at (.*)$/);
@@ -245,8 +249,8 @@ const MerchantDetail = () => {
   );
   
   // Find webhooks matching the displayed transactions
-  const displayTxnIds = new Set(displayTransactions.map((t: any) => t.transaction_id));
-  const displayWebhooks = webhooks.filter((w: any) => displayTxnIds.has(w.transaction_id));
+  const displayTxnIds = new Set(displayTransactions.map((t: any) => t.id));
+  const displayWebhooks = webhooks.filter((w: any) => displayTxnIds.has(w.id));
 
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-6">
@@ -324,7 +328,7 @@ const MerchantDetail = () => {
             <LineChart data={displayTimeline}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2D3748" vertical={false} />
               <XAxis
-                dataKey="timestamp"
+                dataKey="created_at"
                 stroke="#94A3B8"
                 tick={{fill: '#94A3B8', fontSize: 12, fontFamily: 'JetBrains Mono'}}
                 tickFormatter={(val) =>
@@ -364,9 +368,9 @@ const MerchantDetail = () => {
                 <ReferenceArea
                   key={idx}
                   yAxisId="left"
-                  x1={fw.timestamp}
+                  x1={fw.created_at}
                   x2={new Date(
-                    new Date(fw.timestamp).getTime() + 3600000,
+                    new Date(fw.created_at).getTime() + 3600000,
                   ).toISOString()}
                   fill="#E11D48"
                   fillOpacity={0.15}
@@ -408,11 +412,11 @@ const MerchantDetail = () => {
             </thead>
             <tbody>
               {displayTransactions.slice(0, 50).map((txn: any) => {
-                const webhook = displayWebhooks.find(w => w.transaction_id === txn.transaction_id);
+                const webhook = displayWebhooks.find(w => w.id === txn.id);
                 const tier = webhook ? webhook.tier : "allow";
                 return (
-                  <tr key={txn.transaction_id} className={`border-b border-pg-border ${webhook ? 'bg-[#2D1A16]' : 'hover:bg-[#1C2531]'}`}>
-                    <td className="p-3 text-pg-cyan">{txn.transaction_id}</td>
+                  <tr key={txn.id} className={`border-b border-pg-border ${webhook ? 'bg-[#2D1A16]' : 'hover:bg-[#1C2531]'}`}>
+                    <td className="p-3 text-pg-cyan">{txn.id}</td>
                     <td className="p-3 text-pg-text">{new Date(txn.window).toLocaleString()}</td>
                     <td className="p-3 font-medium text-pg-crimson">
                       {txn.score.toFixed(3)}
@@ -465,7 +469,7 @@ const MerchantDetail = () => {
                     >
                       {action.tier.toUpperCase()}
                     </span>
-                    <span className="text-pg-text">{action.transaction_id}</span>
+                    <span className="text-pg-text">{action.id}</span>
                   </div>
                   <p className="text-xs text-pg-muted font-sans mt-2">{action.reason}</p>
                 </div>

@@ -6,7 +6,7 @@ from backend.detector import detect, DetectionConfig
 def evaluate_new_merchant():
     # 1. Generate data with a new merchant
     df = generate_dataset(num_merchants=5, days=15)
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['created_at'] = pd.to_datetime(df['created_at'])
     
     # Identify the new merchant
     new_merchant_id = [m for m in df['merchant_id'].unique() if "NEW" in m][0]
@@ -30,9 +30,9 @@ def evaluate_new_merchant():
     for tier in ["Low Volume", "Medium Volume", "High Volume"]:
         tier_df = df[df['merchant_tier'] == tier].copy()
         if tier_df.empty: continue
-        tier_df['time_diff'] = tier_df.groupby('merchant_id')['timestamp'].diff().dt.total_seconds().fillna(0)
-        t_agg = tier_df.set_index('timestamp').resample('1h').agg(
-            volume=('transaction_id', 'count'), ticket_size=('amount', 'mean'), velocity=('time_diff', 'mean')
+        tier_df['time_diff'] = tier_df.groupby('merchant_id')['created_at'].diff().dt.total_seconds().fillna(0)
+        t_agg = tier_df.set_index('created_at').resample('1h').agg(
+            volume=('id', 'count'), ticket_size=('amount', 'mean'), velocity=('time_diff', 'mean')
         ).fillna(0)
         t_agg['volume'] = t_agg['volume'] / tier_df['merchant_id'].nunique()
         tier_priors_map[tier] = {
@@ -49,9 +49,9 @@ def evaluate_new_merchant():
     res_before = detect(new_m_df, config_before)
     
     flagged_txns_before = res_before.flagged_transactions
-    flagged_ids_before = {t['transaction_id'] for t in flagged_txns_before}
+    flagged_ids_before = {t['id'] for t in flagged_txns_before}
     
-    tp_before = new_m_df[new_m_df['transaction_id'].isin(flagged_ids_before)]['is_anomaly'].sum()
+    tp_before = new_m_df[new_m_df['id'].isin(flagged_ids_before)]['is_anomaly'].sum()
     fp_before = len(flagged_txns_before) - tp_before
     fn_before = total_anomalies - tp_before
     
@@ -67,9 +67,9 @@ def evaluate_new_merchant():
     res_after = detect(new_m_df, config_after)
     
     flagged_txns_after = res_after.flagged_transactions
-    flagged_ids_after = {t['transaction_id'] for t in flagged_txns_after}
+    flagged_ids_after = {t['id'] for t in flagged_txns_after}
     
-    tp_after = new_m_df[new_m_df['transaction_id'].isin(flagged_ids_after)]['is_anomaly'].sum()
+    tp_after = new_m_df[new_m_df['id'].isin(flagged_ids_after)]['is_anomaly'].sum()
     fp_after = len(flagged_txns_after) - tp_after
     fn_after = total_anomalies - tp_after
     

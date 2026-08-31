@@ -1,4 +1,6 @@
 import pytest
+import pandas as pd
+import numpy as np
 from data.generator import generate_dataset
 
 def test_generate_dataset_schema_and_labels():
@@ -6,14 +8,14 @@ def test_generate_dataset_schema_and_labels():
     
     # 1. Schema check
     expected_cols = {
-        'transaction_id', 'merchant_id', 'timestamp', 'amount', 
-        'payment_method', 'location', 'is_anomaly', 'anomaly_type'
+        'id', 'entity', 'amount', 'currency', 'status', 'method', 
+        'email', 'contact', 'notes', 'created_at', 'is_anomaly', 'anomaly_type'
     }
     assert set(df.columns) == expected_cols, "Generated dataframe is missing expected columns"
     
     # 2. Check types
     assert df['is_anomaly'].dtype == bool, "is_anomaly should be a boolean"
-    assert df['amount'].dtype == float, "amount should be float"
+    assert df['amount'].dtype in [int, np.int64, np.int32], "amount should be integer (paise)"
     
     # 3. Check labels alignment
     anomalies_by_flag = df[df['is_anomaly'] == True]
