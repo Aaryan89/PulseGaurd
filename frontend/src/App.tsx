@@ -52,20 +52,74 @@ const MerchantList = () => {
     <div className="p-8 max-w-6xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Risk Overview</h1>
-        <button
-          onClick={() => {
-            axios
-              .post("/api/refresh")
-              .then(() =>
-                alert(
-                  "Pipeline refreshing in background. Reload page in a few seconds.",
-                ),
-              );
-          }}
-          className="bg-transparent border border-pg-border text-pg-text hover:border-pg-cyan hover:text-pg-cyan px-4 py-2 text-sm font-mono transition-colors"
-        >
-          [REFRESH_SYNTHETICS]
-        </button>
+        <div className="space-x-4">
+          <button
+            onClick={async () => {
+              try {
+                const amount = prompt("Enter test amount (in paise):", "150000");
+                if (!amount) return;
+                
+                const { data: order } = await axios.post("/api/razorpay/create-test-order", { amount: parseInt(amount, 10) });
+                
+                const options = {
+                  key: order.key_id,
+                  amount: order.amount,
+                  currency: order.currency,
+                  name: "PulseGuard Demo",
+                  description: "Test Transaction",
+                  order_id: order.order_id,
+                  handler: async function (response: any) {
+                    try {
+                      const ingestRes = await axios.post("/api/razorpay/ingest-test-payment", {
+                        payment_id: response.razorpay_payment_id,
+                        merchant_id: "M_001"
+                      });
+                      if (ingestRes.data.flagged) {
+                         alert(`Transaction ingested! Flagged as anomaly. Score: ${ingestRes.data.score.toFixed(2)}`);
+                      } else {
+                         alert(`Transaction ingested! Passed normal. (Not flagged)`);
+                      }
+                      
+                      const merchantsRes = await axios.get("/api/merchants");
+                      setMerchants(merchantsRes.data);
+                    } catch (err: any) {
+                      alert(`Ingestion failed: ${err.response?.data?.detail || err.message}`);
+                    }
+                  },
+                  prefill: {
+                    name: "Demo User",
+                    email: "demo@pulseguard.test",
+                    contact: "9999999999"
+                  },
+                  theme: {
+                    color: "#38BDF8"
+                  }
+                };
+                const rzp = new (window as any).Razorpay(options);
+                rzp.open();
+              } catch (error: any) {
+                alert(`Failed to create order: ${error.response?.data?.detail || error.message}`);
+              }
+            }}
+            className="bg-transparent border border-pg-cyan text-pg-cyan hover:bg-pg-cyan/10 px-4 py-2 text-sm font-mono transition-colors"
+          >
+            [FIRE_LIVE_TXN]
+          </button>
+          <button
+            onClick={() => {
+              axios
+                .post("/api/refresh")
+                .then(() =>
+                  alert(
+                    "Pipeline refreshing in background. Reload page in a few seconds.",
+                  ),
+                );
+            }}
+            className="bg-transparent border border-pg-border text-pg-text hover:border-pg-cyan hover:text-pg-cyan px-4 py-2 text-sm font-mono transition-colors"
+          >
+            [REFRESH_SYNTHETICS]
+          </button>
+        </div>
       </div>
 
       <div className="bg-pg-surface border border-pg-border mb-8">

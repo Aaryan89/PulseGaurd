@@ -53,3 +53,7 @@ Thumbs.db
 data/synthetic_transactions.csv
 __pycache__
 data/creditcard.csv
+
+
+# Razorpay Keys
+*.env

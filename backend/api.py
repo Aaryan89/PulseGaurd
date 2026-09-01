@@ -15,6 +15,7 @@ import json
 from data.generator import generate_dataset
 from backend.detector import detect, DetectionConfig, DetectionResult
 from backend.cost_model import find_optimal_threshold, bootstrap_cost_estimate
+from backend import razorpay_client
 
 app = FastAPI(title="PulseGuard Risk Console API")
 
@@ -416,6 +417,119 @@ async def get_cost_curve(fn_multiplier: float = None, fp_multiplier: float = Non
     
     return new_cost_data
     
+class TestOrderRequest(BaseModel):
+    amount: int
+
+@app.post("/razorpay/create-test-order")
+async def create_test_order_endpoint(req: TestOrderRequest):
+    """Creates a real test mode order for demo purposes."""
+    order = razorpay_client.create_test_order(amount_paise=req.amount)
+    if not order:
+        raise HTTPException(status_code=503, detail="Razorpay credentials not configured")
+    return {
+        "order_id": order["id"], 
+        "amount": order["amount"], 
+        "currency": order["currency"],
+        "key_id": razorpay_client.RAZORPAY_KEY_ID
+    }
+
+class IngestPaymentRequest(BaseModel):
+    payment_id: str
+    merchant_id: str = "M_001"
+
+@app.post("/razorpay/ingest-test-payment")
+async def ingest_test_payment(req: IngestPaymentRequest):
+    """Fetches a completed payment and injects it into the pipeline."""
+    payment = razorpay_client.fetch_payment(req.payment_id)
+    if not payment:
+        raise HTTPException(status_code=503, detail="Razorpay credentials not configured or payment not found")
+        
+    if state.df is None or state.df.empty:
+        raise HTTPException(status_code=400, detail="Pipeline not initialized. Refresh data first.")
+        
+    new_txn = {
+        'id': payment['id'],
+        'entity': 'payment',
+        'amount': payment['amount'],
+        'currency': payment.get('currency', 'INR'),
+        'status': payment.get('status', 'captured'),
+        'method': payment.get('method', 'card'),
+        'email': payment.get('email', 'demo@example.com'),
+        'contact': payment.get('contact', '+919999999999'),
+        'notes': {
+            'merchant_id': req.merchant_id,
+            'merchant_tier': 'Medium Volume',
+            'location': 'domestic'
+        },
+        'created_at': pd.to_datetime(payment['created_at'], unit='s'),
+        'is_anomaly': False,
+        'anomaly_type': 'none',
+        'merchant_id': req.merchant_id,
+        'merchant_tier': 'Medium Volume'
+    }
+    
+    merchant_mask = state.df['merchant_id'] == req.merchant_id
+    if merchant_mask.any():
+        new_txn['merchant_tier'] = state.df[merchant_mask]['merchant_tier'].iloc[0]
+        
+    new_row = pd.DataFrame([new_txn])
+    state.df = pd.concat([state.df, new_row], ignore_index=True)
+    
+    m_df = state.df[state.df['merchant_id'] == req.merchant_id].copy()
+    tier = m_df['merchant_tier'].iloc[0]
+    
+    config = DetectionConfig()
+    
+    tier_df = state.df[state.df['merchant_tier'] == tier].copy()
+    tier_df['time_diff'] = tier_df.groupby('merchant_id')['created_at'].diff().dt.total_seconds().fillna(0)
+    
+    t_agg = tier_df.set_index('created_at').resample('1h').agg(
+        volume=('id', 'count'),
+        ticket_size=('amount', 'mean'),
+        velocity=('time_diff', 'mean')
+    ).fillna(0)
+    num_merch = tier_df['merchant_id'].nunique()
+    t_agg['volume'] = t_agg['volume'] / num_merch
+    
+    config.tier_priors = {
+        signal: {
+            'volume': {'mean': t_agg['volume'].mean(), 'std': t_agg['volume'].std()},
+            'ticket_size': {'mean': t_agg['ticket_size'].mean(), 'std': t_agg['ticket_size'].std()},
+            'velocity': {'mean': t_agg['velocity'].mean(), 'std': t_agg['velocity'].std()}
+        }.get(signal, {}) for signal in ['volume', 'ticket_size', 'velocity']
+    }
+    
+    res = detect(m_df, config)
+    state.merchant_results[req.merchant_id] = res
+    
+    score_dict = {ft['id']: ft['score'] for ft in res.flagged_transactions}
+    if score_dict:
+        state.df.loc[state.df['merchant_id'] == req.merchant_id, 'model_score'] = state.df.loc[state.df['merchant_id'] == req.merchant_id, 'id'].map(score_dict).fillna(-10.0)
+    
+    from backend.webhook_log import webhook_manager
+    flagged = next((ft for ft in res.flagged_transactions if ft['id'] == payment['id']), None)
+    if flagged and state.cost_data and "tiered_optimal" in state.cost_data:
+        lower_thresh = state.cost_data["tiered_optimal"]["lower_threshold"]
+        upper_thresh = state.cost_data["tiered_optimal"]["upper_threshold"]
+        score = flagged['score']
+        
+        tier_action = None
+        if score >= upper_thresh:
+            tier_action = "block"
+        elif score >= lower_thresh:
+            tier_action = "review"
+            
+        if tier_action:
+            webhook_manager.fire_webhook({
+                "id": flagged['id'],
+                "merchant_id": req.merchant_id,
+                "tier": tier_action,
+                "anomaly_score": round(score, 3),
+                "reason": flagged.get('reason', 'Anomaly detected')
+            })
+            
+    return {"status": "ok", "payment_id": payment['id'], "flagged": bool(flagged), "score": flagged['score'] if flagged else None}
+
 @app.post("/webhooks/razorpay")
 async def razorpay_webhook(request: Request, x_razorpay_signature: str = Header(None)):
     """
