@@ -214,6 +214,7 @@ def run_pipeline():
         state.df = df
         state.merchant_results = merchant_results
         state.last_updated = datetime.now()
+        webhook_manager.flush_batch()
         
     finally:
         state.is_refreshing = False
