@@ -169,7 +169,7 @@ const MerchantList = () => {
             </tr>
           </thead>
           <tbody>
-            {merchants.map((m) => (
+            {Array.isArray(merchants) && merchants.map((m) => (
               <tr
                 key={m.merchant_id}
                 className="border-b border-pg-border hover:bg-[#1C2531] transition-colors"
@@ -236,7 +236,7 @@ const RecentActions = () => {
         </h2>
       </div>
       <div className="p-4 space-y-2">
-        {actions.map((action, idx) => (
+        {Array.isArray(actions) && actions.map((action, idx) => (
           <div
             key={idx}
             className="border border-pg-border bg-pg-bg p-3 flex items-start justify-between font-mono text-sm"
