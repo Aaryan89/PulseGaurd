@@ -1,49 +1,37 @@
-# PulseGuard Risk Console
+# PulseGuard: Risk & Fraud Console
 
-## Quick Start
-1. **Clone the repo**
-   ```bash
-   git clone https://github.com/Aaryan89/PulseGaurd.git
-   cd PulseGaurd
-   ```
+> A two-stage regime-break fraud detection engine and amount-weighted cost model for payment aggregators.
 
-2. **Start the application**
-   ```bash
-   docker-compose up -d
-   ```
+**The Headline:** Our two-stage detection and tiered cost model reduces expected operating costs by **75.0%** compared to a baseline of no detector, and **48.6%** compared to a naive static threshold.
 
-3. **Open the Dashboard**
-   Open your browser to: [http://localhost:3000](http://localhost:3000)
+### 🎥 Replay Mode Demo
+<!-- ![Replay Mode Demo](./docs/replay-demo.gif) -->
+*(A placeholder for your screen capture of Replay Mode is above!)*
 
-*That's it! The backend automatically seeds itself with synthetic data and runs detection on startup. No manual data generation required.*
-
----
-
-## Local Development Workflow
-If you want to run the application outside of Docker for quick debugging:
-
-1. **Start the backend (from the root directory):**
-   ```bash
-   pip install -r requirements.txt
-   uvicorn backend.api:app --host 0.0.0.0 --port 8000
-   ```
-
-2. **Start the frontend:**
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-   (The frontend will proxy `/api` requests to `localhost:8000` automatically during local dev).
-
-## Testing
-The repository includes a fast test suite verifying the core mathematical, detection, and data generation logic.
-
-To run the tests:
+### Quick Start
+To spin up the entire application stack locally (including auto-generating 30 days of synthetic data):
 ```bash
-pytest
+docker-compose up --build
 ```
-(A GitHub Action is also included to run these automatically on push).
+Open **`http://localhost:3000`**. 
 
-## Configuration
-See `.env.example` for configurable variables, including ports, webhook settings, and cost model defaults.
+*(For manual setup or testing the automated suite, see [TESTING.md](./TESTING.md))*
+
+**Live Deployment:** [pulse-gaurd.vercel.app]
+
+### What it does
+
+*   **Two-Stage Detection:** Instead of flat classification, PulseGuard uses an EWMA/CUSUM macro-level regime-break detector to spot anomalous windows against a merchant's specific historical baseline, passing only those windows to a transaction-level Isolation Forest.
+*   **Amount-Weighted Cost Model:** It dynamically calculates optimal thresholds to minimize total operating cost (False Negatives * Chargeback Fee vs. False Positives * Churn Risk), factoring in the exact monetary amount of each transaction rather than treating all errors equally.
+*   **Tiered Policy Engine:** It calculates dual thresholds (`lower_threshold`, `upper_threshold`) to route transactions into `allow`, `review`, and `block` buckets, dynamically optimizing the trade-off between operational review costs and automated blocking errors.
+*   **Auto-Responder:** Transactions flagged as `review` or `block` instantly fire batched webhooks, complete with rate-limiting and Isolation Forest feature attribution (e.g., `amount (+2.1σ)`).
+*   **Razorpay Integration:** Features a live checkout modal integrated with Razorpay's test SDK, alongside a verified webhook receiver endpoint that can consume real Razorpay dispute webhooks to simulate delayed-label ground truth.
+
+### Architecture
+Read the full system design, Mermaid diagrams, design rationale, and production limitations in **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+
+### Hackathon Track Alignment
+We built this explicitly for the Razorpay track. Here is how we checked the boxes:
+*   **Detector, Verifier, or Auto-Responder?** We built a **Detector** (Regime breaks + IF) and an **Auto-Responder** (Batched Webhook Manager).
+*   **Honest Metrics:** We completely discarded standard F1 scores. Our entire evaluation is built around a custom financial Cost Curve that explicitly penalizes **False Positive Cost** (customer churn and insult rates).
+*   **Strictly Defense-Only:** The engine is purely defensive, analyzing transaction metadata to protect the aggregator from chargeback liability and merchant busts without interacting with consumer-facing flows (aside from the internal checkout stub).
