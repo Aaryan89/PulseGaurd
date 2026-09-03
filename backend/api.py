@@ -19,9 +19,12 @@ from backend import razorpay_client
 
 app = FastAPI(title="PulseGuard Risk Console API")
 
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",")] if allowed_origins_env else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -218,11 +221,13 @@ def run_pipeline():
 @app.on_event("startup")
 async def startup_event():
     # Initial pipeline run
-    run_pipeline()
+    import asyncio
+    asyncio.create_task(asyncio.to_thread(run_pipeline))
 
 @app.post("/refresh")
 async def refresh_data(background_tasks: BackgroundTasks):
     if not state.is_refreshing:
+        state.is_refreshing = True
         background_tasks.add_task(run_pipeline)
         return {"status": "refreshing"}
     return {"status": "already_refreshing"}
@@ -473,38 +478,43 @@ async def ingest_test_payment(req: IngestPaymentRequest):
         new_txn['merchant_tier'] = state.df[merchant_mask]['merchant_tier'].iloc[0]
         
     new_row = pd.DataFrame([new_txn])
-    state.df = pd.concat([state.df, new_row], ignore_index=True)
     
-    m_df = state.df[state.df['merchant_id'] == req.merchant_id].copy()
-    tier = m_df['merchant_tier'].iloc[0]
-    
-    config = DetectionConfig()
-    
-    tier_df = state.df[state.df['merchant_tier'] == tier].copy()
-    tier_df['time_diff'] = tier_df.groupby('merchant_id')['created_at'].diff().dt.total_seconds().fillna(0)
-    
-    t_agg = tier_df.set_index('created_at').resample('1h').agg(
-        volume=('id', 'count'),
-        ticket_size=('amount', 'mean'),
-        velocity=('time_diff', 'mean')
-    ).fillna(0)
-    num_merch = tier_df['merchant_id'].nunique()
-    t_agg['volume'] = t_agg['volume'] / num_merch
-    
-    config.tier_priors = {
-        signal: {
-            'volume': {'mean': t_agg['volume'].mean(), 'std': t_agg['volume'].std()},
-            'ticket_size': {'mean': t_agg['ticket_size'].mean(), 'std': t_agg['ticket_size'].std()},
-            'velocity': {'mean': t_agg['velocity'].mean(), 'std': t_agg['velocity'].std()}
-        }.get(signal, {}) for signal in ['volume', 'ticket_size', 'velocity']
-    }
-    
-    res = detect(m_df, config)
-    state.merchant_results[req.merchant_id] = res
-    
-    score_dict = {ft['id']: ft['score'] for ft in res.flagged_transactions}
-    if score_dict:
-        state.df.loc[state.df['merchant_id'] == req.merchant_id, 'model_score'] = state.df.loc[state.df['merchant_id'] == req.merchant_id, 'id'].map(score_dict).fillna(-10.0)
+    import asyncio
+    if not hasattr(state, 'lock'):
+        state.lock = asyncio.Lock()
+        
+    async with state.lock:
+        state.df = pd.concat([state.df, new_row], ignore_index=True)
+        m_df = state.df[state.df['merchant_id'] == req.merchant_id].copy()
+        tier = m_df['merchant_tier'].iloc[0]
+        
+        config = DetectionConfig()
+        
+        tier_df = state.df[state.df['merchant_tier'] == tier].copy()
+        tier_df['time_diff'] = tier_df.groupby('merchant_id')['created_at'].diff().dt.total_seconds().fillna(0)
+        
+        t_agg = tier_df.set_index('created_at').resample('1h').agg(
+            volume=('id', 'count'),
+            ticket_size=('amount', 'mean'),
+            velocity=('time_diff', 'mean')
+        ).fillna(0)
+        num_merch = tier_df['merchant_id'].nunique()
+        t_agg['volume'] = t_agg['volume'] / num_merch
+        
+        config.tier_priors = {
+            signal: {
+                'volume': {'mean': t_agg['volume'].mean(), 'std': t_agg['volume'].std()},
+                'ticket_size': {'mean': t_agg['ticket_size'].mean(), 'std': t_agg['ticket_size'].std()},
+                'velocity': {'mean': t_agg['velocity'].mean(), 'std': t_agg['velocity'].std()}
+            }.get(signal, {}) for signal in ['volume', 'ticket_size', 'velocity']
+        }
+        
+        res = detect(m_df, config)
+        state.merchant_results[req.merchant_id] = res
+        
+        score_dict = {ft['id']: ft['score'] for ft in res.flagged_transactions}
+        if score_dict:
+            state.df.loc[state.df['merchant_id'] == req.merchant_id, 'model_score'] = state.df.loc[state.df['merchant_id'] == req.merchant_id, 'id'].map(score_dict).fillna(-10.0)
     
     from backend.webhook_log import webhook_manager
     flagged = next((ft for ft in res.flagged_transactions if ft['id'] == payment['id']), None)

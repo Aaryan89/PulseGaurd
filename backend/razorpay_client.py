@@ -32,7 +32,11 @@ def create_test_order(amount_paise: int, currency: str = "INR", receipt: str = "
             "demo_type": "pulseguard_live_test"
         }
     }
-    return client.order.create(data=data)
+    try:
+        return client.order.create(data=data)
+    except Exception as e:
+        print(f"Razorpay API Error (Create Order): {e}")
+        return None
 
 def fetch_payment(payment_id: str) -> Optional[Dict[str, Any]]:
     """
@@ -42,4 +46,8 @@ def fetch_payment(payment_id: str) -> Optional[Dict[str, Any]]:
     if not client:
         return None
         
-    return client.payment.fetch(payment_id)
+    try:
+        return client.payment.fetch(payment_id)
+    except Exception as e:
+        print(f"Razorpay API Error (Fetch Payment): {e}")
+        return None
