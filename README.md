@@ -17,7 +17,7 @@ Open **`http://localhost:3000`**.
 
 *(For manual setup or testing the automated suite, see [TESTING.md](./TESTING.md))*
 
-**Live Deployment:** [pulse-gaurd.vercel.app]
+**Live Deployment:** [https://pulse-gaurd.vercel.app](https://pulse-gaurd.vercel.app)
 
 ### What it does
 
